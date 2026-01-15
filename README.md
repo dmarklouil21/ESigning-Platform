@@ -41,15 +41,19 @@ To ensure delivery within the **3-day timeline**, the scope is defined as follow
 
 ---
 
-## 🧩 User Flow
+## 🧩 User Flow & Architecture
+
+The application follows a linear, single-user flow designed for efficiency.
 
 ```mermaid
 graph TD
-    A[User Log In] --> B[Dashboard]
-    B --> C[Upload New Document]
-    C --> D[Editor: Drag & Drop Signature]
-    D --> E[System Logs Timestamp (Audit Trail)]
-    E --> F[Flatten & Save PDF]
-    F --> G{Next Action?}
-    G -->|Download| H[Save to Device]
-    G -->|Send| I[Input Recipient Email -> Send]
+    A[User Log In] --> B[Upload PDF Document]
+    B --> C[Document Rendered in Editor]
+    C --> D{Choose Action}
+    D -->|Draw| E[Create Signature on Canvas]
+    D -->|Type| F[Generate Cursive Text]
+    E --> G[Drag Signature to Position]
+    F --> G
+    G --> H[Click 'Finish & Sign']
+    H --> I[System Flattens Layer onto PDF]
+    I --> J[Download Signed PDF]
