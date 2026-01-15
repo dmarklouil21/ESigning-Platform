@@ -5,54 +5,51 @@
 ## 📋 Project Overview
 
 ### 1. What is this project?
-This is a streamlined E-Signing platform that allows users to sign documents digitally. It focuses on speed and simplicity, stripping away enterprise bloat to allow users to sign and download documents in seconds.
+This is a streamlined E-Signing platform (similar to DocuSign or Zoho Sign). It focuses on speed and simplicity, allowing users to upload, sign, track, and email documents in a legally binding format without enterprise bloat.
 
 ### 2. Who is it for?
-* **Freelancers:** For quickly signing contracts and NDAs.
-* **Small Business Owners:** For approving invoices or internal memos.
-* **Individuals:** For signing tenancy agreements, waivers, or permission slips.
+* **Freelancers & Consultants:** To sign and send contracts immediately.
+* **Small Business Owners:** For approving and tracking internal documents.
+* **Individuals:** For quick signing of personal agreements.
 
 ### 3. What problem does it solve?
-It eliminates the "Print-Sign-Scan" friction. Traditional physical signing requires hardware (printers/scanners) and significant time. This MVP allows a user to upload, sign, and export a legally binding PDF entirely within the browser.
+It eliminates the "Print-Sign-Scan-Email" friction. Traditional signing requires hardware and multiple steps. This MVP creates a unified digital workflow: Upload -> Sign -> Audit -> Email.
 
 ---
 
 ## 🚀 Key Features (The MVP Scope)
 
-The scope is defined as follows:
+To ensure delivery within the **3-day timeline**, the scope is defined as follows:
 
-* **🔐 User Authentication:** Secure sign-up/login (Email & Password / OAuth).
+* **🔐 User Authentication:** Secure login to ensure identity verification for the audit trail.
 * **📂 Document Management:** Drag-and-drop PDF upload.
-* **✍️ Signature Pad:** Draw signatures using a mouse or touch interface, or type with cursive fonts.
-* **🖱️ Drag-and-Drop Editor:** Place signatures, dates, and text fields precisely onto the document.
-* **⬇️ PDF Flattening & Export:** Merges the signature layer with the PDF for a secure, non-editable download.
-* **⬇️ Audtit Trail:** Automatic logging of key signing activities such as Document upload date and time and Signature applied.
-* **⬇️ Dashboard:** A simple dashboard displaying a list of documents signed by the user.
+* **✍️ Signature Pad:** Draw signatures or type with cursive fonts; drag-and-drop placement.
+* **📊 User Dashboard:** A central hub displaying a list of all signed documents and their status.
+* **📜 Audit Trail:** * Automatic logging of key activities (Upload time, Sign time).
+    * Display of metadata (Timestamp, Signer Email) for tracking purposes.
+* **📧 Send to Recipient:** Integrated feature to email the final PDF or a download link directly to a recipient.
+
 ---
 
-## 🛠️ Tech Stack
+## 🛠️ Tech Stack Strategy
 
 * **Frontend:** React.js / Next.js
-* **Styling:** Tailwind CSS (for rapid UI development)
-* **Backend/BaaS:** Firebase (Auth, Firestore, Storage) *[Recommended for speed]*
-* **PDF Manipulation:** `pdf-lib` (for modifying PDFs) and `react-pdf` (for rendering).
-* **Signature Pad:** `react-signature-canvas`
+* **Backend:** Firebase (Auth & Firestore for Audit Logs)
+* **Storage:** Firebase Storage (For keeping the signed PDFs)
+* **Email Service:** EmailJS (Client-side) or Nodemailer (Server-side)
+* **PDF Manipulation:** `pdf-lib` (Essential for flattening signatures onto the PDF)
 
 ---
 
-## 🧩 User Flow & Architecture
-
-The application follows a linear, single-user flow designed for efficiency.
+## 🧩 User Flow
 
 ```mermaid
 graph TD
-    A[User Log In] --> B[Upload PDF Document]
-    B --> C[Document Rendered in Editor]
-    C --> D{Choose Action}
-    D -->|Draw| E[Create Signature on Canvas]
-    D -->|Type| F[Generate Cursive Text]
-    E --> G[Drag Signature to Position]
-    F --> G
-    G --> H[Click 'Finish & Sign']
-    H --> I[System Flattens Layer onto PDF]
-    I --> J[Download Signed PDF]
+    A[User Log In] --> B[Dashboard]
+    B --> C[Upload New Document]
+    C --> D[Editor: Drag & Drop Signature]
+    D --> E[System Logs Timestamp (Audit Trail)]
+    E --> F[Flatten & Save PDF]
+    F --> G{Next Action?}
+    G -->|Download| H[Save to Device]
+    G -->|Send| I[Input Recipient Email -> Send]
