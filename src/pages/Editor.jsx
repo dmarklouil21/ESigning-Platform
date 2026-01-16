@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Download, PenTool, Eraser, X, ChevronLeft, ChevronRight, Loader2, Save } from 'lucide-react'; // Added Save icon
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { db, storage } from '../firebase';
+import { db, storage, logAction } from '../firebase';
 import { Rnd } from 'react-rnd';
 import SignatureModal from '../components/SignatureModal';
 import FinishModal from '../components/FinishModal';
@@ -99,6 +99,8 @@ const Editor = () => {
       console.error("Error saving draft:", error);
       alert("Failed to save draft.");
     }
+
+    await logAction(id, "Draft Saved", "User saved signature positions.");
     setSavingDraft(false);
   };
 
@@ -151,6 +153,8 @@ const Editor = () => {
       signatures: [] // Clear draft signatures since it is now baked in
     });
 
+    await logAction(id, "Document Signed", "User finalized and signed the document.");
+
     return { blob, url: updatedUrl };
   };
 
@@ -191,6 +195,8 @@ const Editor = () => {
       console.error("Email failed", error);
       alert("Failed to send email.");
     }
+
+    await logAction(id, "Document Emailed", `Signed PDF sent to ${recipientEmail}`);
     setProcessing(false);
   };
 

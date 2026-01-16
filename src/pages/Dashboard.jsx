@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, FileText, Clock, Search, LogOut, Loader2 } from 'lucide-react';
+import { Plus, FileText, Clock, Search, LogOut, Loader2, History } from 'lucide-react';
 import { collection, query, where, onSnapshot, orderBy } from 'firebase/firestore'; // 1. Firestore imports
 import { db } from '../firebase'; 
 import { useAuth } from '../context/AuthContext';
 import UploadModal from '../components/UploadModal';
+import HistoryModal from '../components/HistoryModal';
 
 const Dashboard = () => {
   const { user, logout } = useAuth();
@@ -15,6 +16,9 @@ const Dashboard = () => {
   const [loading, setLoading] = useState(true); // Loading state
   const [isUploadOpen, setIsUploadOpen] = useState(false);
   const [error, setError] = useState('');
+
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [selectedHistoryDoc, setSelectedHistoryDoc] = useState({ id: null, name: '' });
 
   // 2. Fetch Documents (Real-time Listener)
   useEffect(() => {
@@ -48,6 +52,12 @@ const Dashboard = () => {
     // Cleanup listener on unmount
     return () => unsubscribe();
   }, [user]);
+
+  const handleViewHistory = (e, doc) => {
+    e.stopPropagation(); // Prevent clicking the card (which opens Editor)
+    setSelectedHistoryDoc({ id: doc.id, name: doc.name });
+    setIsHistoryOpen(true);
+  };
 
   const handleLogout = async () => {
     try {
@@ -135,12 +145,17 @@ const Dashboard = () => {
                 title={doc.name}
                 date={formatDate(doc.createdAt)}
                 status={doc.status}
-                // We will use this ID later to open the Editor
-                // onClick={() => console.log("Open Editor for:", doc.id)} 
                 onClick={() => handleOpenEditor(doc.id)}
+                onHistory={(e) => handleViewHistory(e, doc)} // Pass the handler
               />
             ))
           )}
+          <HistoryModal 
+            isOpen={isHistoryOpen}
+            onClose={() => setIsHistoryOpen(false)}
+            docId={selectedHistoryDoc.id}
+            docName={selectedHistoryDoc.name}
+          />
         </div>
       </main>
 
@@ -154,7 +169,7 @@ const Dashboard = () => {
 };
 
 // Updated Card Component to accept props
-const DocumentCard = ({ title, date, status, onClick }) => (
+const DocumentCard = ({ title, date, status, onClick, onHistory }) => (
   <div 
     onClick={onClick}
     className="bg-white p-5 rounded-xl border border-slate-100 hover:shadow-md transition-shadow flex items-center justify-between group cursor-pointer"
@@ -177,6 +192,14 @@ const DocumentCard = ({ title, date, status, onClick }) => (
       }`}>
         {status}
       </span>
+      {/* NEW: History Button */}
+      <button 
+        onClick={onHistory}
+        className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-full transition-all"
+        title="View History"
+      >
+        <History className="w-4 h-4" />
+      </button>
       <button className="text-slate-400 hover:text-blue-600 text-sm font-medium">Open</button>
     </div>
   </div>

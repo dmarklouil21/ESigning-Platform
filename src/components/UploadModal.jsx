@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Upload, X, FileText, CheckCircle, AlertCircle } from 'lucide-react';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
-import { db, storage } from '../firebase'; // Import your firebase config
+import { db, storage, logAction } from '../firebase'; // Import your firebase config
 import { useAuth } from '../context/AuthContext';
 
 const UploadModal = ({ isOpen, onClose, onUploadSuccess }) => {
@@ -42,7 +42,7 @@ const UploadModal = ({ isOpen, onClose, onUploadSuccess }) => {
       const downloadURL = await getDownloadURL(snapshot.ref);
 
       // Save Metadata to Firestore
-      await addDoc(collection(db, "documents"), {
+      const docRef = await addDoc(collection(db, "documents"), {
         uid: user.uid,              // User ID
         name: file.name,            // File Name
         fileUrl: downloadURL,       // Link to the file
@@ -50,6 +50,8 @@ const UploadModal = ({ isOpen, onClose, onUploadSuccess }) => {
         status: "Uploaded",         // Initial Status
         storagePath: snapshot.ref.fullPath // Reference path for deletion later
       });
+
+      await logAction(docRef.id, "Document Uploaded", `File ${file.name} uploaded successfully.`);
 
       // Cleanup and Close
       setUploading(false);

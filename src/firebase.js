@@ -1,7 +1,7 @@
 // src/firebase.js
 import { initializeApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
-import { getFirestore } from "firebase/firestore";
+import { getFirestore, collection, addDoc, serverTimestamp } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
 
 const firebaseConfig = {
@@ -20,4 +20,20 @@ const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const db = getFirestore(app);
 export const storage = getStorage(app);
+
+export const logAction = async (docId, action, details = "") => {
+  try {
+    // Creates a sub-collection called 'history' inside the specific document
+    await addDoc(collection(db, "documents", docId, "history"), {
+      action: action,        // e.g., "Document Uploaded"
+      details: details,      // e.g., "User uploaded file.pdf"
+      timestamp: serverTimestamp(),
+      user: auth.currentUser ? auth.currentUser.email : "Unknown"
+    });
+    console.log("Action Logged:", action);
+  } catch (error) {
+    console.error("Failed to log action:", error);
+  }
+};
+
 export default app;
