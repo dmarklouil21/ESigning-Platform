@@ -6,6 +6,7 @@ import LandingPage from './pages/Landing';
 import Login from './pages/Login';
 import Signup from './pages/Signup';
 import Dashboard from './pages/Dashboard';
+import Editor from './pages/Editor'; 
 
 // Protected Route Component
 // If user is NOT logged in, kick them back to Login page
@@ -32,6 +33,16 @@ function App() {
               </PrivateRoute>
             } 
           /> 
+
+          {/* Editor Route */}
+          <Route 
+            path="/editor/:id" 
+            element={
+              <PrivateRoute>
+                <Editor />
+              </PrivateRoute>
+            } 
+          />
         </Routes>
       </Router>
     </AuthProvider>
