@@ -2,7 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Plus, FileText, PenTool, Clock, Search, LogOut, Loader2, MoreVertical, Download, Send, Trash2, History, AlertTriangle, X } from 'lucide-react';
 import { collection, query, where, onSnapshot, doc, deleteDoc, updateDoc } from 'firebase/firestore';
-import { db } from '../firebase';
+import { ref, updateMetadata } from 'firebase/storage';
+import { db, storage } from '../firebase';
 import { useAuth } from '../context/AuthContext';
 import UploadModal from '../components/UploadModal';
 import HistoryModal from '../components/HistoryModal';
@@ -104,9 +105,16 @@ const Dashboard = () => {
   const handleEmail = async (recipientEmail) => {
     if (!selectedDocForAction) return;
     
-    setProcessingAction(true); // <--- 1. START LOADING (Triggers the "Sending..." text)
+    setProcessingAction(true); 
 
     try {
+      const fileRef = ref(storage, selectedDocForAction.storagePath);
+
+      await updateMetadata(fileRef, {
+        contentDisposition: `attachment; filename="${selectedDocForAction.name}"`,
+        contentType: 'application/pdf'
+      });
+
       const templateParams = {
         to_email: recipientEmail,
         document_name: selectedDocForAction.name,
@@ -131,6 +139,11 @@ const Dashboard = () => {
       return true; 
     } catch (err) {
       console.error("Email failed:", err);
+      if (err.code === 'storage/object-not-found') {
+        alert("Could not configure auto-download, but will try to send link anyway.");
+      } else {
+        alert("Failed to send email.");
+      }
       setProcessingAction(false);
       alert("Failed to send email. Check console.");
       return false;

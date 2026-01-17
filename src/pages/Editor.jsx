@@ -2,7 +2,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Download, PenTool, Eraser, X, ChevronLeft, ChevronRight, Loader2, Save } from 'lucide-react'; // Added Save icon
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { ref, uploadBytes, getDownloadURL, updateMetadata } from 'firebase/storage';
 import { db, storage, logAction } from '../firebase';
 import { useAuth } from '../context/AuthContext';
 import { Rnd } from 'react-rnd';
@@ -96,7 +96,7 @@ const Editor = () => {
         lastModified: new Date(),
         status: 'Draft' // Optional: Mark as Draft
       });
-      alert("Draft saved successfully! You can come back later.");
+      // alert("Draft saved successfully! You can come back later.");
     } catch (error) {
       console.error("Error saving draft:", error);
       alert("Failed to save draft.");
@@ -183,6 +183,13 @@ const Editor = () => {
     setProcessing(true);
     try {
       const { url } = await saveToFirebase();
+      
+      const storageRef = ref(storage, documentData.storagePath);
+      await updateMetadata(storageRef, {
+        contentDisposition: `attachment; filename="signed_${documentData.name}"`,
+        contentType: 'application/pdf'
+      });
+      
       const templateParams = {
         to_email: recipientEmail,
         document_name: documentData.name,

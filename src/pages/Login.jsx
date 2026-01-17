@@ -25,7 +25,7 @@ const Login = () => {
       navigate('/dashboard'); // Redirect to Dashboard on success
     } catch (err) {
       // Firebase throws specific errors, but we'll show a generic one or the message
-      setError('Failed to log in. Please check your email and password.');
+      setError(err.message || 'Failed to log in. Please check your credentials and try again.');
       console.error(err);
     }
 
