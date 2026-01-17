@@ -4,6 +4,7 @@ import { ArrowLeft, Download, PenTool, Eraser, X, ChevronLeft, ChevronRight, Loa
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage, logAction } from '../firebase';
+import { useAuth } from '../context/AuthContext';
 import { Rnd } from 'react-rnd';
 import SignatureModal from '../components/SignatureModal';
 import FinishModal from '../components/FinishModal';
@@ -38,6 +39,7 @@ const DraggableSignature = ({ sig, onUpdate, onRemove }) => {
 
 const Editor = () => {
   const { id } = useParams();
+  const { user } = useAuth();
   const navigate = useNavigate();
   const pdfContainerRef = useRef(null); 
   
@@ -185,19 +187,24 @@ const Editor = () => {
         to_email: recipientEmail,
         document_name: documentData.name,
         download_link: url,
+        from_name: user.displayName || user.email, 
+        from_email: user.email,
+        reply_to: user.email,
         message: "Please find the signed document attached via the link below."
       };
 
-      await emailjs.send('YOUR_SERVICE_ID', 'YOUR_TEMPLATE_ID', templateParams, 'YOUR_PUBLIC_KEY');
+      await emailjs.send('service_g23671h', 'template_n5lpdpv', templateParams, '0WB5-X4FNk0oe3RAt');
       await updateDoc(doc(db, "documents", id), { status: 'Sent' });
       
+      await logAction(id, "Document Emailed", `Signed PDF sent to ${recipientEmail}`);
+      setProcessing(false);
+      return true;
     } catch (error) {
       console.error("Email failed", error);
       alert("Failed to send email.");
+      setProcessing(false);
+      return false;
     }
-
-    await logAction(id, "Document Emailed", `Signed PDF sent to ${recipientEmail}`);
-    setProcessing(false);
   };
 
   // Helpers
