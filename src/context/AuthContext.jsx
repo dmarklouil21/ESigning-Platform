@@ -5,10 +5,12 @@ import {
   signInWithEmailAndPassword, 
   signOut, 
   onAuthStateChanged,
-  updateProfile
+  updateProfile,
+  sendEmailVerification, // 1. Added import
+  sendPasswordResetEmail // Optional: Handy to have
 } from 'firebase/auth';
 import { doc, setDoc } from 'firebase/firestore'; 
-import { auth, db } from '../firebase'; // Import from your firebase config
+import { auth, db } from '../firebase'; 
 
 const AuthContext = createContext();
 
@@ -18,18 +20,15 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // 1. Sign Up Function (Modified to save First/Last name)
+  // 1. Sign Up Function
   const signup = async (email, password, firstName, lastName) => {
-    // Create Auth User
     const userCredential = await createUserWithEmailAndPassword(auth, email, password);
     const user = userCredential.user;
 
-    // Update the "Display Name" in Firebase Auth (optional but good practice)
     await updateProfile(user, {
       displayName: `${firstName} ${lastName}`
     });
 
-    // Save detailed user profile to Firestore Database
     await setDoc(doc(db, "users", user.uid), {
       firstName: firstName,
       lastName: lastName,
@@ -51,7 +50,26 @@ export const AuthProvider = ({ children }) => {
     return signOut(auth);
   };
 
-  // 4. Monitor Auth State (Checks if user is logged in on refresh)
+  // 4. Send Verification Email (New Helper)
+  const sendVerificationEmail = (user) => {
+    // If no user is passed, use the current context user
+    const targetUser = user || auth.currentUser;
+    if (targetUser) {
+      return sendEmailVerification(targetUser);
+    }
+  };
+
+  // 5. Reload User (New Helper)
+  // Essential for checking if emailVerified status changed without re-logging in
+  const reloadUser = async () => {
+    if (auth.currentUser) {
+      await auth.currentUser.reload();
+      setUser({ ...auth.currentUser });
+      return auth.currentUser;
+    }
+  };
+
+  // 6. Monitor Auth State
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
@@ -64,7 +82,9 @@ export const AuthProvider = ({ children }) => {
     user,
     signup,
     login,
-    logout
+    logout,
+    sendVerificationEmail, // Exported
+    reloadUser             // Exported
   };
 
   return (

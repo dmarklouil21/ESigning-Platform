@@ -1,31 +1,50 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { PenTool } from 'lucide-react';
-import { useAuth } from '../context/AuthContext'; // Import the Auth Hook
+import { useAuth } from '../context/AuthContext'; 
 
 const Login = () => {
   const navigate = useNavigate();
-  const { login } = useAuth(); // Get the login function from context
+  // 1. Get logout function from context
+  const { login, logout } = useAuth(); 
   
-  // Local state for error handling and loading status
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
   const handleLogin = async (e) => {
     e.preventDefault();
-    setError(''); // Clear previous errors
+    setError('');
     setLoading(true);
 
-    // Get values directly from form elements
     const email = e.target.email.value;
     const password = e.target.password.value;
 
     try {
-      await login(email, password);
-      navigate('/dashboard'); // Redirect to Dashboard on success
+      // 2. Capture the user credential from the login response
+      const userCredential = await login(email, password);
+      const user = userCredential.user;
+
+      // 3. CHECK: Is the email verified?
+      if (!user.emailVerified) {
+        // If not verified, force logout immediately
+        await logout();
+        setError("Your email is not verified. Please check your inbox for the verification link.");
+        setLoading(false);
+        return; // Stop here, do not redirect
+      }
+
+      // 4. Only redirect if verified
+      navigate('/dashboard'); 
+      
     } catch (err) {
-      // Firebase throws specific errors, but we'll show a generic one or the message
-      setError(err.message || 'Failed to log in. Please check your credentials and try again.');
+      // Handle Firebase errors
+      if (err.code === 'auth/invalid-credential' || err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password') {
+        setError('Incorrect email or password.');
+      } else if (err.code === 'auth/too-many-requests') {
+        setError('Too many failed attempts. Please try again later.');
+      } else {
+        setError('Failed to log in. Please try again.');
+      }
       console.error(err);
     }
 
