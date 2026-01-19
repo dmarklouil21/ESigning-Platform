@@ -76,7 +76,7 @@ const Editor = () => {
   
   const [signatures, setSignatures] = useState([]);
 
-  // 1. Fetch User Profile from Firestore on Mount
+  // Fetch User Profile from Firestore on Mount
   useEffect(() => {
     const fetchUserProfile = async () => {
       if (user?.uid) {
@@ -94,7 +94,7 @@ const Editor = () => {
     fetchUserProfile();
   }, [user]);
 
-  // 2. Fetch Document Data
+  // Fetch Document Data
   useEffect(() => {
     const fetchDocument = async () => {
       try {
@@ -143,7 +143,7 @@ const Editor = () => {
     addTextElement(dateStr);
   };
 
-  // --- 3. Updated Name Handler: Uses Firestore Data ---
+  // --- Updated Name Handler: Uses Firestore Data ---
   const handleAddName = (type) => {
     // Fallback to auth.displayName if Firestore load failed/delayed
     if (!userProfile.firstName && !userProfile.lastName) {
