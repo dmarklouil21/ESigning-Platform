@@ -17,7 +17,7 @@ import 'react-pdf/dist/Page/TextLayer.css';
 
 pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
-// --- Updated Draggable Component (Mobile Friendly) ---
+// --- Draggable Component ---
 const DraggableElement = ({ data, onUpdate, onRemove, isSelected, onSelect }) => {
   return (
     <Rnd
@@ -26,15 +26,13 @@ const DraggableElement = ({ data, onUpdate, onRemove, isSelected, onSelect }) =>
       onResizeStop={(e, direction, ref, delta, position) => {
         onUpdate(data.id, { width: parseInt(ref.style.width), height: parseInt(ref.style.height), ...position });
       }}
-      // Select item on start of any interaction
       onDragStart={() => onSelect(data.id)}
       onClick={(e) => {
-        e.stopPropagation(); // Prevent click from bubbling to background
+        e.stopPropagation(); 
         onSelect(data.id);
       }}
       bounds="parent"
       lockAspectRatio={data.type !== 'text'} 
-      // Dynamic Classes: If selected, show border permanently. If not, only on hover (desktop).
       className={`group z-50 border-2 relative transition-colors ${
         isSelected ? 'border-blue-500' : 'border-transparent hover:border-blue-400'
       }`}
@@ -55,10 +53,9 @@ const DraggableElement = ({ data, onUpdate, onRemove, isSelected, onSelect }) =>
         />
       )}
 
-      {/* Delete Button: Visible if Selected OR Hovered */}
       <button 
         onMouseDown={(e) => { e.stopPropagation(); onRemove(data.id); }} 
-        onTouchStart={(e) => { e.stopPropagation(); onRemove(data.id); }} // Better touch response
+        onTouchStart={(e) => { e.stopPropagation(); onRemove(data.id); }} 
         className={`absolute -top-3 -right-3 bg-red-500 text-white rounded-full p-1 shadow-sm z-50 cursor-pointer transition-opacity ${
           isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
         }`}
@@ -81,7 +78,6 @@ const Editor = () => {
   const [savingDraft, setSavingDraft] = useState(false); 
   
   const [userProfile, setUserProfile] = useState({ firstName: '', lastName: '' });
-  // --- NEW: Track selected element ---
   const [selectedId, setSelectedId] = useState(null);
 
   const [numPages, setNumPages] = useState(null);
@@ -93,10 +89,8 @@ const Editor = () => {
   
   const [signatures, setSignatures] = useState([]);
 
-  // 1. Check if there is at least one signature
   const hasSignature = signatures.some(sig => sig.type === 'image');
 
-  // Fetch User Profile
   useEffect(() => {
     const fetchUserProfile = async () => {
       if (user?.uid) {
@@ -114,7 +108,6 @@ const Editor = () => {
     fetchUserProfile();
   }, [user]);
 
-  // Fetch Document
   useEffect(() => {
     const fetchDocument = async () => {
       try {
@@ -148,14 +141,14 @@ const Editor = () => {
       id: Date.now(),
       type: 'text',
       text: safeText,
-      x: 50, // Changed to 50 for better mobile visibility start
+      x: 50, 
       y: 100, 
       width: Math.max(100, safeText.length * 10), 
       height: 30,
       page: pageNumber
     };
     setSignatures([...signatures, newElement]);
-    setSelectedId(newElement.id); // Auto-select new item
+    setSelectedId(newElement.id); 
   };
 
   const handleAddDate = () => {
@@ -191,7 +184,7 @@ const Editor = () => {
         page: pageNumber 
       };
       setSignatures([...signatures, newSig]);
-      setSelectedId(newSig.id); // Auto-select
+      setSelectedId(newSig.id); 
     };
   };
 
@@ -334,12 +327,10 @@ const Editor = () => {
   const updateElement = (id, props) => setSignatures(signatures.map(s => s.id === id ? { ...s, ...props } : s));
   const removeElement = (id) => setSignatures(signatures.filter(s => s.id !== id));
 
-  // --- Background Click: Deselect ---
   const handleBackgroundClick = () => setSelectedId(null);
 
   if (loading) return <div className="h-screen flex items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-blue-600"/></div>;
 
-  // --- Tools Config for Reuse ---
   const tools = [
     { icon: <PenTool className="w-5 h-5" />, label: "Sign", action: () => setIsSigModalOpen(true) },
     { icon: <Calendar className="w-5 h-5" />, label: "Date", action: handleAddDate },
@@ -358,7 +349,6 @@ const Editor = () => {
         </div>
         
         <div className="flex items-center gap-2">
-          {/* Draft Button (Hidden on very small screens if needed, or icon only) */}
           <button 
             onClick={handleSaveDraft}
             disabled={savingDraft}
@@ -368,15 +358,7 @@ const Editor = () => {
             <span className="hidden md:inline">Draft</span>
           </button>
 
-          {/* Finish Button */}
-          <button 
-            onClick={() => setIsFinishModalOpen(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 shadow-sm"
-          >
-            <Download className="w-4 h-4" /> 
-            <span className="hidden md:inline">Finish & Send</span>
-          </button>
-          {/* <div className="relative group">
+          <div className="relative group">
             <button 
               onClick={() => setIsFinishModalOpen(true)}
               disabled={!hasSignature}
@@ -390,12 +372,12 @@ const Editor = () => {
                 Please add a signature to finish.
               </div>
             )}
-          </div> */}
+          </div>
         </div>
       </header>
 
       <div className="flex flex-1 overflow-hidden relative">
-        {/* --- DESKTOP SIDEBAR (Hidden on Mobile) --- */}
+        {/* --- DESKTOP SIDEBAR --- */}
         <aside className="hidden md:flex w-20 bg-white border-r border-slate-200 flex-col items-center py-6 gap-6 z-20 overflow-y-auto">
           {tools.map((tool, idx) => (
             <React.Fragment key={idx}>
@@ -405,14 +387,17 @@ const Editor = () => {
           ))}
         </aside>
 
-        {/* --- MAIN CONTENT --- */}
+        {/* --- MAIN CONTENT AREA --- */}
+        {/* FIX 1: Allow Horizontal Scroll (overflow-auto handles X and Y) */}
         <main 
-          className="flex-1 bg-slate-200/50 overflow-auto flex justify-center p-4 md:p-8 relative pb-24 md:pb-8" // Added pb-24 for mobile toolbar space
-          onClick={handleBackgroundClick} // Deselect on background click
+          className="flex-1 bg-slate-200/50 overflow-auto relative" 
+          onClick={handleBackgroundClick} 
         >
-          <div className="flex flex-col items-center gap-4 mb-20 w-full">
-            {/* PDF Container - Added scale logic for responsive fit if needed, or rely on overflow */}
-            <div ref={pdfContainerRef} className="relative inline-block shadow-2xl border border-slate-300 bg-white select-none max-w-full">
+          {/* FIX 2: Content Wrapper with min-w-fit so it doesn't get clipped */}
+          {/* FIX 3: Huge bottom padding (pb-40) to clear the bottom toolbar */}
+          <div className="min-w-fit min-h-full flex flex-col items-center p-4 md:p-8 pb-40">
+            
+            <div ref={pdfContainerRef} className="relative inline-block shadow-2xl border border-slate-300 bg-white select-none">
               {documentData?.fileUrl && (
                 <Document 
                   file={documentData.fileUrl} 
@@ -424,7 +409,6 @@ const Editor = () => {
                     scale={scale} 
                     renderTextLayer={false} 
                     renderAnnotationLayer={false}
-                    className="max-w-full h-auto" 
                   />
                 </Document>
               )}
@@ -434,14 +418,15 @@ const Editor = () => {
                   data={item} 
                   onUpdate={updateElement} 
                   onRemove={removeElement} 
-                  isSelected={selectedId === item.id} // Pass Selection State
-                  onSelect={setSelectedId}            // Pass Selection Setter
+                  isSelected={selectedId === item.id} 
+                  onSelect={setSelectedId}            
                 />
               ))}
             </div>
+
           </div>
           
-          {/* Page Controls */}
+          {/* Page Controls (Floating) */}
           {numPages && numPages > 1 && (
             <div className="fixed bottom-24 md:bottom-8 left-1/2 transform -translate-x-1/2 bg-white px-4 py-2 md:px-6 md:py-3 rounded-full shadow-xl border border-slate-200 flex items-center gap-4 md:gap-6 z-40">
               <button disabled={pageNumber <= 1} onClick={() => changePage(-1)} className="p-2 hover:bg-slate-100 rounded-full disabled:opacity-30"><ChevronLeft className="w-5 h-5 md:w-6 md:h-6" /></button>
@@ -452,7 +437,7 @@ const Editor = () => {
         </main>
       </div>
 
-      {/* --- MOBILE BOTTOM TOOLBAR (Visible only on Mobile) --- */}
+      {/* --- MOBILE BOTTOM TOOLBAR --- */}
       <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 z-50 px-2 py-2 flex justify-around items-end shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
         {tools.map((tool, idx) => (
           <ToolButton key={idx} icon={tool.icon} label={tool.label} onClick={tool.action} mobile />
@@ -472,7 +457,6 @@ const Editor = () => {
   );
 };
 
-// Updated ToolButton to handle mobile styling
 const ToolButton = ({ icon, label, onClick, active, mobile }) => (
   <button 
     onClick={onClick} 
