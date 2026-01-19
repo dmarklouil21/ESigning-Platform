@@ -17,8 +17,8 @@ import 'react-pdf/dist/Page/TextLayer.css';
 
 pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
-// --- Draggable Component ---
-const DraggableElement = ({ data, onUpdate, onRemove }) => {
+// --- Updated Draggable Component (Mobile Friendly) ---
+const DraggableElement = ({ data, onUpdate, onRemove, isSelected, onSelect }) => {
   return (
     <Rnd
       default={{ x: data.x, y: data.y, width: data.width, height: data.height || 60 }}
@@ -26,9 +26,18 @@ const DraggableElement = ({ data, onUpdate, onRemove }) => {
       onResizeStop={(e, direction, ref, delta, position) => {
         onUpdate(data.id, { width: parseInt(ref.style.width), height: parseInt(ref.style.height), ...position });
       }}
+      // Select item on start of any interaction
+      onDragStart={() => onSelect(data.id)}
+      onClick={(e) => {
+        e.stopPropagation(); // Prevent click from bubbling to background
+        onSelect(data.id);
+      }}
       bounds="parent"
-      className="group z-50 border-2 border-transparent hover:border-blue-400 relative"
       lockAspectRatio={data.type !== 'text'} 
+      // Dynamic Classes: If selected, show border permanently. If not, only on hover (desktop).
+      className={`group z-50 border-2 relative transition-colors ${
+        isSelected ? 'border-blue-500' : 'border-transparent hover:border-blue-400'
+      }`}
     >
       {data.type === 'text' ? (
         <div 
@@ -46,7 +55,14 @@ const DraggableElement = ({ data, onUpdate, onRemove }) => {
         />
       )}
 
-      <button onMouseDown={(e) => { e.stopPropagation(); onRemove(data.id); }} className="absolute -top-3 -right-3 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity shadow-sm z-50 cursor-pointer">
+      {/* Delete Button: Visible if Selected OR Hovered */}
+      <button 
+        onMouseDown={(e) => { e.stopPropagation(); onRemove(data.id); }} 
+        onTouchStart={(e) => { e.stopPropagation(); onRemove(data.id); }} // Better touch response
+        className={`absolute -top-3 -right-3 bg-red-500 text-white rounded-full p-1 shadow-sm z-50 cursor-pointer transition-opacity ${
+          isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+        }`}
+      >
         <X className="w-3 h-3" />
       </button>
     </Rnd>
@@ -64,8 +80,9 @@ const Editor = () => {
   const [processing, setProcessing] = useState(false);
   const [savingDraft, setSavingDraft] = useState(false); 
   
-  // --- NEW: State for precise user profile data ---
   const [userProfile, setUserProfile] = useState({ firstName: '', lastName: '' });
+  // --- NEW: Track selected element ---
+  const [selectedId, setSelectedId] = useState(null);
 
   const [numPages, setNumPages] = useState(null);
   const [pageNumber, setPageNumber] = useState(1);
@@ -76,7 +93,10 @@ const Editor = () => {
   
   const [signatures, setSignatures] = useState([]);
 
-  // Fetch User Profile from Firestore on Mount
+  // 1. Check if there is at least one signature
+  const hasSignature = signatures.some(sig => sig.type === 'image');
+
+  // Fetch User Profile
   useEffect(() => {
     const fetchUserProfile = async () => {
       if (user?.uid) {
@@ -94,7 +114,7 @@ const Editor = () => {
     fetchUserProfile();
   }, [user]);
 
-  // Fetch Document Data
+  // Fetch Document
   useEffect(() => {
     const fetchDocument = async () => {
       try {
@@ -123,19 +143,19 @@ const Editor = () => {
   }
 
   const addTextElement = (text) => {
-    // If text is undefined or null, fallback to empty string
     const safeText = text || "User";
     const newElement = {
       id: Date.now(),
       type: 'text',
       text: safeText,
-      x: 100, 
+      x: 50, // Changed to 50 for better mobile visibility start
       y: 100, 
       width: Math.max(100, safeText.length * 10), 
       height: 30,
       page: pageNumber
     };
     setSignatures([...signatures, newElement]);
+    setSelectedId(newElement.id); // Auto-select new item
   };
 
   const handleAddDate = () => {
@@ -143,17 +163,13 @@ const Editor = () => {
     addTextElement(dateStr);
   };
 
-  // --- Updated Name Handler: Uses Firestore Data ---
   const handleAddName = (type) => {
-    // Fallback to auth.displayName if Firestore load failed/delayed
     if (!userProfile.firstName && !userProfile.lastName) {
-       console.warn("UserProfile not loaded yet, using Auth DisplayName");
        const names = (user.displayName || "").split(' ');
        if (type === 'first') addTextElement(names[0]);
        if (type === 'last') addTextElement(names.slice(1).join(' '));
        return;
     }
-
     if (type === 'first') addTextElement(userProfile.firstName);
     if (type === 'last') addTextElement(userProfile.lastName);
   };
@@ -166,14 +182,16 @@ const Editor = () => {
       const baseWidth = 200;
       const calculatedHeight = baseWidth / aspectRatio;
 
-      setSignatures([...signatures, { 
+      const newSig = { 
         id: Date.now(), 
         type: 'image', 
         url, 
-        x: 100, y: 100, 
+        x: 50, y: 100, 
         width: baseWidth, height: calculatedHeight, 
         page: pageNumber 
-      }]);
+      };
+      setSignatures([...signatures, newSig]);
+      setSelectedId(newSig.id); // Auto-select
     };
   };
 
@@ -316,26 +334,41 @@ const Editor = () => {
   const updateElement = (id, props) => setSignatures(signatures.map(s => s.id === id ? { ...s, ...props } : s));
   const removeElement = (id) => setSignatures(signatures.filter(s => s.id !== id));
 
+  // --- Background Click: Deselect ---
+  const handleBackgroundClick = () => setSelectedId(null);
+
   if (loading) return <div className="h-screen flex items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-blue-600"/></div>;
+
+  // --- Tools Config for Reuse ---
+  const tools = [
+    { icon: <PenTool className="w-5 h-5" />, label: "Sign", action: () => setIsSigModalOpen(true) },
+    { icon: <Calendar className="w-5 h-5" />, label: "Date", action: handleAddDate },
+    { icon: <User className="w-5 h-5" />, label: "First Name", action: () => handleAddName('first') },
+    { icon: <User className="w-5 h-5" />, label: "Last Name", action: () => handleAddName('last') },
+    { icon: <Eraser className="w-5 h-5" />, label: "Clear", action: () => setSignatures([]) },
+  ];
 
   return (
     <div className="flex flex-col h-screen bg-slate-100 overflow-hidden">
-      <header className="bg-white border-b border-slate-200 px-6 py-3 flex justify-between items-center shadow-sm z-20 relative">
-        <div className="flex items-center gap-4">
+      {/* HEADER */}
+      <header className="bg-white border-b border-slate-200 px-4 md:px-6 py-3 flex justify-between items-center shadow-sm z-20 relative">
+        <div className="flex items-center gap-2 md:gap-4">
           <button onClick={() => navigate('/dashboard')} className="p-2 hover:bg-slate-100 rounded-full transition-colors"><ArrowLeft className="w-5 h-5 text-slate-600" /></button>
-          <h1 className="font-bold text-slate-800 truncate max-w-[200px]">{documentData?.name}</h1>
+          <h1 className="font-bold text-slate-800 truncate max-w-[150px] md:max-w-[200px] text-sm md:text-base">{documentData?.name}</h1>
         </div>
         
         <div className="flex items-center gap-2">
+          {/* Draft Button (Hidden on very small screens if needed, or icon only) */}
           <button 
             onClick={handleSaveDraft}
             disabled={savingDraft}
-            className="flex items-center gap-2 px-4 py-2 text-slate-600 bg-white border border-slate-200 text-sm font-medium rounded-lg hover:bg-slate-50 transition-colors"
+            className="flex items-center gap-2 px-3 py-2 text-slate-600 bg-white border border-slate-200 text-xs md:text-sm font-medium rounded-lg hover:bg-slate-50 transition-colors"
           >
             {savingDraft ? <Loader2 className="w-4 h-4 animate-spin"/> : <Save className="w-4 h-4" />}
-            <span className="hidden md:inline">Save Draft</span>
+            <span className="hidden md:inline">Draft</span>
           </button>
 
+          {/* Finish Button */}
           <button 
             onClick={() => setIsFinishModalOpen(true)}
             className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 shadow-sm"
@@ -343,53 +376,56 @@ const Editor = () => {
             <Download className="w-4 h-4" /> 
             <span className="hidden md:inline">Finish & Send</span>
           </button>
+          {/* <div className="relative group">
+            <button 
+              onClick={() => setIsFinishModalOpen(true)}
+              disabled={!hasSignature}
+              className="flex items-center gap-2 px-3 py-2 bg-blue-600 text-white text-xs md:text-sm font-medium rounded-lg hover:bg-blue-700 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-slate-400 transition-all"
+            >
+              <Download className="w-4 h-4" /> 
+              <span className="hidden md:inline">Finish</span>
+            </button>
+            {!hasSignature && (
+              <div className="hidden md:block absolute top-full right-0 mt-2 w-48 p-2 bg-slate-800 text-white text-xs rounded shadow-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50 text-center">
+                Please add a signature to finish.
+              </div>
+            )}
+          </div> */}
         </div>
       </header>
 
       <div className="flex flex-1 overflow-hidden relative">
-        <aside className="w-20 bg-white border-r border-slate-200 flex flex-col items-center py-6 gap-6 z-20 relative">
-          <ToolButton 
-            icon={<PenTool className="w-5 h-5" />} 
-            label="Sign" 
-            onClick={() => setIsSigModalOpen(true)} 
-            active 
-          />
-          
-          <ToolButton 
-            icon={<Calendar className="w-5 h-5" />} 
-            label="Date" 
-            onClick={handleAddDate} 
-          />
-          
-          <div className="w-10 border-b border-slate-200 my-1"></div>
-
-          <ToolButton 
-            icon={<User className="w-5 h-5" />} 
-            label="First Name" 
-            onClick={() => handleAddName('first')} 
-          />
-
-          <ToolButton 
-            icon={<User className="w-5 h-5" />} 
-            label="Last Name" 
-            onClick={() => handleAddName('last')} 
-          />
-          
-          <div className="w-10 border-b border-slate-200 my-1"></div>
-
-          <ToolButton 
-            icon={<Eraser className="w-5 h-5" />} 
-            label="Clear All" 
-            onClick={() => setSignatures([])} 
-          />
+        {/* --- DESKTOP SIDEBAR (Hidden on Mobile) --- */}
+        <aside className="hidden md:flex w-20 bg-white border-r border-slate-200 flex-col items-center py-6 gap-6 z-20 overflow-y-auto">
+          {tools.map((tool, idx) => (
+            <React.Fragment key={idx}>
+               <ToolButton icon={tool.icon} label={tool.label} onClick={tool.action} />
+               {(idx === 1 || idx === 3) && <div className="w-10 border-b border-slate-200 my-1"></div>}
+            </React.Fragment>
+          ))}
         </aside>
 
-        <main className="flex-1 bg-slate-200/50 overflow-auto flex justify-center p-8 relative">
-          <div className="flex flex-col items-center gap-4 mb-20">
-            <div ref={pdfContainerRef} className="relative inline-block shadow-2xl border border-slate-300 bg-white select-none">
+        {/* --- MAIN CONTENT --- */}
+        <main 
+          className="flex-1 bg-slate-200/50 overflow-auto flex justify-center p-4 md:p-8 relative pb-24 md:pb-8" // Added pb-24 for mobile toolbar space
+          onClick={handleBackgroundClick} // Deselect on background click
+        >
+          <div className="flex flex-col items-center gap-4 mb-20 w-full">
+            {/* PDF Container - Added scale logic for responsive fit if needed, or rely on overflow */}
+            <div ref={pdfContainerRef} className="relative inline-block shadow-2xl border border-slate-300 bg-white select-none max-w-full">
               {documentData?.fileUrl && (
-                <Document file={documentData.fileUrl} onLoadSuccess={onDocumentLoadSuccess} loading={<div className="h-[600px] w-[500px] flex items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-blue-600"/></div>}>
-                  <Page pageNumber={pageNumber} scale={scale} renderTextLayer={false} renderAnnotationLayer={false} />
+                <Document 
+                  file={documentData.fileUrl} 
+                  onLoadSuccess={onDocumentLoadSuccess} 
+                  loading={<div className="h-[300px] flex items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-blue-600"/></div>}
+                >
+                  <Page 
+                    pageNumber={pageNumber} 
+                    scale={scale} 
+                    renderTextLayer={false} 
+                    renderAnnotationLayer={false}
+                    className="max-w-full h-auto" 
+                  />
                 </Document>
               )}
               {signatures.filter(sig => sig.page === pageNumber).map((item) => (
@@ -398,18 +434,29 @@ const Editor = () => {
                   data={item} 
                   onUpdate={updateElement} 
                   onRemove={removeElement} 
+                  isSelected={selectedId === item.id} // Pass Selection State
+                  onSelect={setSelectedId}            // Pass Selection Setter
                 />
               ))}
             </div>
           </div>
+          
+          {/* Page Controls */}
           {numPages && numPages > 1 && (
-            <div className="fixed bottom-8 left-1/2 transform -translate-x-1/2 bg-white px-6 py-3 rounded-full shadow-xl border border-slate-200 flex items-center gap-6 z-50">
-              <button disabled={pageNumber <= 1} onClick={() => changePage(-1)} className="p-2 hover:bg-slate-100 rounded-full disabled:opacity-30"><ChevronLeft className="w-6 h-6" /></button>
-              <span className="text-sm font-semibold text-slate-700 min-w-[80px] text-center">Page {pageNumber} of {numPages}</span>
-              <button disabled={pageNumber >= numPages} onClick={() => changePage(1)} className="p-2 hover:bg-slate-100 rounded-full disabled:opacity-30"><ChevronRight className="w-6 h-6" /></button>
+            <div className="fixed bottom-24 md:bottom-8 left-1/2 transform -translate-x-1/2 bg-white px-4 py-2 md:px-6 md:py-3 rounded-full shadow-xl border border-slate-200 flex items-center gap-4 md:gap-6 z-40">
+              <button disabled={pageNumber <= 1} onClick={() => changePage(-1)} className="p-2 hover:bg-slate-100 rounded-full disabled:opacity-30"><ChevronLeft className="w-5 h-5 md:w-6 md:h-6" /></button>
+              <span className="text-xs md:text-sm font-semibold text-slate-700 min-w-[60px] text-center">Page {pageNumber} of {numPages}</span>
+              <button disabled={pageNumber >= numPages} onClick={() => changePage(1)} className="p-2 hover:bg-slate-100 rounded-full disabled:opacity-30"><ChevronRight className="w-5 h-5 md:w-6 md:h-6" /></button>
             </div>
           )}
         </main>
+      </div>
+
+      {/* --- MOBILE BOTTOM TOOLBAR (Visible only on Mobile) --- */}
+      <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 z-50 px-2 py-2 flex justify-around items-end shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
+        {tools.map((tool, idx) => (
+          <ToolButton key={idx} icon={tool.icon} label={tool.label} onClick={tool.action} mobile />
+        ))}
       </div>
 
       <SignatureModal isOpen={isSigModalOpen} onClose={() => setIsSigModalOpen(false)} onSave={handleSaveSignature} />
@@ -425,9 +472,17 @@ const Editor = () => {
   );
 };
 
-const ToolButton = ({ icon, label, onClick, active }) => (
-  <button onClick={onClick} className={`flex flex-col items-center gap-1 p-2 rounded-lg transition-all ${active ? 'text-blue-600 bg-blue-50' : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'}`}>
-    {icon} <span className="text-[10px] font-medium text-center">{label}</span>
+// Updated ToolButton to handle mobile styling
+const ToolButton = ({ icon, label, onClick, active, mobile }) => (
+  <button 
+    onClick={onClick} 
+    className={`flex flex-col items-center gap-1 p-2 rounded-lg transition-all 
+      ${active ? 'text-blue-600 bg-blue-50' : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'}
+      ${mobile ? 'flex-1 min-w-[50px]' : ''} 
+    `}
+  >
+    {icon} 
+    <span className="text-[10px] font-medium text-center leading-tight">{label}</span>
   </button>
 );
 
