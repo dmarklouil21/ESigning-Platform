@@ -1,40 +1,110 @@
 import React, { useRef, useState } from 'react';
 import SignatureCanvas from 'react-signature-canvas';
-import { X, Type, PenTool } from 'lucide-react';
+import { X, Type, PenTool, Check } from 'lucide-react';
+
+// --- 10 Font Options ---
+const fontOptions = [
+  { name: 'Classic', value: '"Dancing Script", cursive' },
+  { name: 'Elegant', value: '"Great Vibes", cursive' },
+  { name: 'Monoline', value: '"Sacramento", cursive' },
+  { name: 'Vintage', value: '"Parisienne", cursive' },
+  { name: 'Messy', value: '"Cedarville Cursive", cursive' },
+  { name: 'Formal', value: '"Allura", cursive' },
+  { name: 'Marker', value: '"Permanent Marker", cursive' }, // Note: Add Permanent Marker to index.html if you want this specific bold look, replaced below with a standard cursive for safety if link not updated perfectly
+  { name: 'Calligraphy', value: '"Mr Dafoe", cursive' },
+  { name: 'Thin', value: '"Herr Von Muellerhoff", cursive' },
+  { name: 'Casual', value: '"Homemade Apple", cursive' },
+  { name: 'Stylish', value: '"Clicker Script", cursive' },
+];
 
 const SignatureModal = ({ isOpen, onClose, onSave }) => {
   const sigCanvas = useRef({});
-  const [activeTab, setActiveTab] = useState('draw'); // 'draw' or 'type'
+  const [activeTab, setActiveTab] = useState('draw'); 
   const [typedSignature, setTypedSignature] = useState('');
+  const [selectedFont, setSelectedFont] = useState(fontOptions[0].value);
 
   if (!isOpen) return null;
+
+  const trimCanvas = (canvas) => {
+    const ctx = canvas.getContext('2d');
+    const width = canvas.width;
+    const height = canvas.height;
+    
+    const imageData = ctx.getImageData(0, 0, width, height);
+    const { data } = imageData;
+    
+    let minX = width, minY = height, maxX = 0, maxY = 0;
+    let found = false;
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const alpha = data[(y * width + x) * 4 + 3];
+        if (alpha > 0) {
+          if (x < minX) minX = x;
+          if (x > maxX) maxX = x;
+          if (y < minY) minY = y;
+          if (y > maxY) maxY = y;
+          found = true;
+        }
+      }
+    }
+
+    if (!found) return null;
+
+    const padding = 10; // Slightly more padding for loopier fonts
+    const trimWidth = (maxX - minX) + (padding * 2);
+    const trimHeight = (maxY - minY) + (padding * 2);
+
+    const trimmedCanvas = document.createElement('canvas');
+    trimmedCanvas.width = trimWidth;
+    trimmedCanvas.height = trimHeight;
+    const trimmedCtx = trimmedCanvas.getContext('2d');
+
+    trimmedCtx.drawImage(
+      canvas,
+      minX - padding, minY - padding,
+      trimWidth, trimHeight,
+      0, 0,
+      trimWidth, trimHeight
+    );
+
+    return trimmedCanvas.toDataURL('image/png');
+  };
 
   const handleSave = () => {
     if (activeTab === 'draw') {
       if (!sigCanvas.current.isEmpty()) {
-        // Convert drawing to an image URL (Base64)
-        const signatureImage = sigCanvas.current.getCanvas().toDataURL('image/png');
-        onSave(signatureImage);
-        onClose();
+        const rawCanvas = sigCanvas.current.getCanvas();
+        const trimmedImage = trimCanvas(rawCanvas);
+        if (trimmedImage) {
+          onSave(trimmedImage);
+          onClose();
+        }
       }
     } else {
-      // Convert typed text to an image (simple canvas approach)
       if (typedSignature.trim()) {
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
-        canvas.width = 400;
-        canvas.height = 100;
-        ctx.font = '48px "Dancing Script", cursive'; // Ensure you have a cursive font imported or use generic
+        canvas.width = 1000; // Extra wide for long names
+        canvas.height = 300; 
+        
+        ctx.font = `80px ${selectedFont}`; 
         ctx.fillStyle = 'black';
-        ctx.fillText(typedSignature, 20, 60);
-        onSave(canvas.toDataURL());
-        onClose();
+        ctx.textBaseline = 'middle';
+        ctx.textAlign = 'center';
+        ctx.fillText(typedSignature, canvas.width / 2, canvas.height / 2);
+
+        const trimmedImage = trimCanvas(canvas);
+        if (trimmedImage) {
+          onSave(trimmedImage);
+          onClose();
+        }
       }
     }
   };
 
   const clear = () => {
-    if (sigCanvas.current) sigCanvas.current.clear();
+    if (sigCanvas.current?.clear) sigCanvas.current.clear();
     setTypedSignature('');
   };
 
@@ -66,7 +136,7 @@ const SignatureModal = ({ isOpen, onClose, onSave }) => {
 
         {/* Canvas Area */}
         <div className="p-6 bg-slate-100 flex justify-center">
-          <div className="bg-white border border-slate-300 rounded-lg shadow-sm">
+          <div className="bg-white border border-slate-300 rounded-lg shadow-sm overflow-hidden w-full max-w-[400px]">
             {activeTab === 'draw' ? (
               <SignatureCanvas 
                 ref={sigCanvas}
@@ -74,15 +144,39 @@ const SignatureModal = ({ isOpen, onClose, onSave }) => {
                 canvasProps={{width: 400, height: 200, className: 'cursor-crosshair'}} 
               />
             ) : (
-              <div className="w-[400px] h-[200px] flex items-center justify-center p-4">
-                <input 
-                  type="text" 
-                  placeholder="Type your name"
-                  value={typedSignature}
-                  onChange={(e) => setTypedSignature(e.target.value)}
-                  className="w-full text-center text-4xl border-b-2 border-slate-300 focus:border-blue-500 outline-none pb-2 font-[cursive] bg-transparent"
-                  style={{ fontFamily: '"Dancing Script", cursive' }} // You might need to add a Google Font link for this
-                />
+              <div className="flex flex-col">
+                {/* Input Area */}
+                <div className="w-full h-[120px] flex items-center justify-center p-4 bg-white relative">
+                  <input 
+                    type="text" 
+                    placeholder="Type your name"
+                    value={typedSignature}
+                    onChange={(e) => setTypedSignature(e.target.value)}
+                    className="w-full text-center text-4xl border-none outline-none bg-transparent placeholder:text-slate-300 placeholder:font-sans z-10 relative"
+                    style={{ fontFamily: selectedFont }} 
+                  />
+                  {/* Faint guide line */}
+                  <div className="absolute bottom-10 left-10 right-10 h-px bg-slate-100 z-0"></div>
+                </div>
+
+                {/* Font Selector - Scrollable Grid */}
+                <div className="bg-slate-50 border-t border-slate-200 p-2">
+                   <div className="text-xs font-semibold text-slate-400 mb-2 px-1 uppercase tracking-wider">Select Style</div>
+                   <div className="grid grid-cols-2 gap-2 max-h-[180px] overflow-y-auto custom-scrollbar pr-1">
+                     {fontOptions.map((font) => (
+                       <button
+                         key={font.name}
+                         onClick={() => setSelectedFont(font.value)}
+                         className={`px-3 py-3 rounded-md transition-all flex items-center justify-between group text-left ${selectedFont === font.value ? 'bg-blue-100 text-blue-700 border border-blue-200 shadow-sm ring-1 ring-blue-200' : 'bg-white border border-slate-200 hover:border-slate-300 text-slate-600 hover:shadow-sm'}`}
+                       >
+                         <span style={{ fontFamily: font.value }} className="text-xl truncate w-full pr-2">
+                           {typedSignature || "Signature"}
+                         </span>
+                         {selectedFont === font.value && <Check className="w-4 h-4 shrink-0" />}
+                       </button>
+                     ))}
+                   </div>
+                </div>
               </div>
             )}
           </div>

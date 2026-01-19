@@ -101,7 +101,7 @@ const UploadModal = ({ isOpen, onClose, onUploadSuccess }) => {
                   <Upload className="w-6 h-6" />
                 </div>
                 <p className="font-medium text-slate-700">Click to upload PDF</p>
-                <p className="text-sm text-slate-400 mt-1">PDF files only, max 5MB</p>
+                <p className="text-sm text-slate-400 mt-1">PDF files only</p>
               </>
             ) : (
               <div className="flex flex-col items-center animate-pulse-once">

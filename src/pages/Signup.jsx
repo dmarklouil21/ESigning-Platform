@@ -4,7 +4,6 @@ import { PenTool, Mail, CheckCircle, ArrowRight } from 'lucide-react'; // Added 
 import { useAuth } from '../context/AuthContext';
 
 const Signup = () => {
-  const navigate = useNavigate();
   const { signup, sendVerificationEmail, logout } = useAuth();
   
   const [error, setError] = useState('');
@@ -25,16 +24,16 @@ const Signup = () => {
     const password = e.target.password.value;
 
     try {
-      // 1. Create the account
+      // Create the account
       const user = await signup(email, password, firstName, lastName);
 
-      // 2. Send Verification Email
+      // Send Verification Email
       await sendVerificationEmail(user);
         
-      // 3. Force Logout
+      // Force Logout
       await logout();
 
-      // 4. Update UI to Success State (instead of alert/redirect)
+      // Update UI to Success State 
       setSentEmail(email);
       setIsSuccess(true);
 

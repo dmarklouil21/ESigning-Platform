@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Download, PenTool, Eraser, X, ChevronLeft, ChevronRight, Loader2, Save } from 'lucide-react'; // Added Save icon
+import { ArrowLeft, Download, PenTool, Eraser, X, ChevronLeft, ChevronRight, Loader2, Save, Calendar, User } from 'lucide-react'; 
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL, updateMetadata } from 'firebase/storage';
 import { db, storage, logAction } from '../firebase';
@@ -9,7 +9,7 @@ import { Rnd } from 'react-rnd';
 import SignatureModal from '../components/SignatureModal';
 import FinishModal from '../components/FinishModal';
 
-import { PDFDocument } from 'pdf-lib'; 
+import { PDFDocument, StandardFonts, rgb } from 'pdf-lib'; 
 import emailjs from '@emailjs/browser'; 
 import { Document, Page, pdfjs } from 'react-pdf';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
@@ -18,19 +18,35 @@ import 'react-pdf/dist/Page/TextLayer.css';
 pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
 // --- Draggable Component ---
-const DraggableSignature = ({ sig, onUpdate, onRemove }) => {
+const DraggableElement = ({ data, onUpdate, onRemove }) => {
   return (
     <Rnd
-      default={{ x: sig.x, y: sig.y, width: sig.width, height: sig.height || 60 }}
-      onDragStop={(e, d) => { onUpdate(sig.id, { x: d.x, y: d.y }); }}
+      default={{ x: data.x, y: data.y, width: data.width, height: data.height || 60 }}
+      onDragStop={(e, d) => { onUpdate(data.id, { x: d.x, y: d.y }); }}
       onResizeStop={(e, direction, ref, delta, position) => {
-        onUpdate(sig.id, { width: parseInt(ref.style.width), height: parseInt(ref.style.height), ...position });
+        onUpdate(data.id, { width: parseInt(ref.style.width), height: parseInt(ref.style.height), ...position });
       }}
       bounds="parent"
       className="group z-50 border-2 border-transparent hover:border-blue-400 relative"
+      lockAspectRatio={data.type !== 'text'} 
     >
-      <img src={sig.url} alt="signature" className="w-full h-full object-contain pointer-events-none select-none" />
-      <button onMouseDown={(e) => { e.stopPropagation(); onRemove(sig.id); }} className="absolute -top-3 -right-3 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity shadow-sm z-50 cursor-pointer">
+      {data.type === 'text' ? (
+        <div 
+          className="w-full h-full flex items-center justify-center text-slate-900 select-none cursor-move whitespace-nowrap" 
+          style={{ fontSize: `${data.height * 0.6}px`, lineHeight: 1, fontFamily: 'Helvetica, sans-serif' }}
+        >
+            {data.text}
+        </div>
+      ) : (
+        <img 
+          src={data.url} 
+          alt="signature" 
+          className="w-full h-full block pointer-events-none select-none" 
+          draggable={false}
+        />
+      )}
+
+      <button onMouseDown={(e) => { e.stopPropagation(); onRemove(data.id); }} className="absolute -top-3 -right-3 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity shadow-sm z-50 cursor-pointer">
         <X className="w-3 h-3" />
       </button>
     </Rnd>
@@ -46,16 +62,39 @@ const Editor = () => {
   const [documentData, setDocumentData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
-  const [savingDraft, setSavingDraft] = useState(false); // New state for draft saving
+  const [savingDraft, setSavingDraft] = useState(false); 
   
+  // --- NEW: State for precise user profile data ---
+  const [userProfile, setUserProfile] = useState({ firstName: '', lastName: '' });
+
   const [numPages, setNumPages] = useState(null);
   const [pageNumber, setPageNumber] = useState(1);
   const [scale, setScale] = useState(1.0);
 
   const [isSigModalOpen, setIsSigModalOpen] = useState(false);
   const [isFinishModalOpen, setIsFinishModalOpen] = useState(false);
+  
   const [signatures, setSignatures] = useState([]);
 
+  // 1. Fetch User Profile from Firestore on Mount
+  useEffect(() => {
+    const fetchUserProfile = async () => {
+      if (user?.uid) {
+        try {
+          const userDocRef = doc(db, "users", user.uid);
+          const userSnap = await getDoc(userDocRef);
+          if (userSnap.exists()) {
+            setUserProfile(userSnap.data());
+          }
+        } catch (error) {
+          console.error("Error fetching user profile:", error);
+        }
+      }
+    };
+    fetchUserProfile();
+  }, [user]);
+
+  // 2. Fetch Document Data
   useEffect(() => {
     const fetchDocument = async () => {
       try {
@@ -64,8 +103,6 @@ const Editor = () => {
         if (docSnap.exists()) {
           const data = docSnap.data();
           setDocumentData(data);
-          
-          // --- RESTORE STATE: If draft signatures exist, load them ---
           if (data.signatures) {
             setSignatures(data.signatures);
           }
@@ -85,57 +122,121 @@ const Editor = () => {
     setNumPages(numPages);
   }
 
-  // --- NEW FEATURE: Save Draft ---
+  const addTextElement = (text) => {
+    // If text is undefined or null, fallback to empty string
+    const safeText = text || "User";
+    const newElement = {
+      id: Date.now(),
+      type: 'text',
+      text: safeText,
+      x: 100, 
+      y: 100, 
+      width: Math.max(100, safeText.length * 10), 
+      height: 30,
+      page: pageNumber
+    };
+    setSignatures([...signatures, newElement]);
+  };
+
+  const handleAddDate = () => {
+    const dateStr = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+    addTextElement(dateStr);
+  };
+
+  // --- 3. Updated Name Handler: Uses Firestore Data ---
+  const handleAddName = (type) => {
+    // Fallback to auth.displayName if Firestore load failed/delayed
+    if (!userProfile.firstName && !userProfile.lastName) {
+       console.warn("UserProfile not loaded yet, using Auth DisplayName");
+       const names = (user.displayName || "").split(' ');
+       if (type === 'first') addTextElement(names[0]);
+       if (type === 'last') addTextElement(names.slice(1).join(' '));
+       return;
+    }
+
+    if (type === 'first') addTextElement(userProfile.firstName);
+    if (type === 'last') addTextElement(userProfile.lastName);
+  };
+
+  const handleSaveSignature = (url) => {
+    const img = new Image();
+    img.src = url;
+    img.onload = () => {
+      const aspectRatio = img.naturalWidth / img.naturalHeight;
+      const baseWidth = 200;
+      const calculatedHeight = baseWidth / aspectRatio;
+
+      setSignatures([...signatures, { 
+        id: Date.now(), 
+        type: 'image', 
+        url, 
+        x: 100, y: 100, 
+        width: baseWidth, height: calculatedHeight, 
+        page: pageNumber 
+      }]);
+    };
+  };
+
   const handleSaveDraft = async () => {
     setSavingDraft(true);
     try {
-      // We save the 'signatures' array directly to Firestore.
-      // This preserves their x, y, width, height, and page number.
       await updateDoc(doc(db, "documents", id), {
-        signatures: signatures, // Save the array
+        signatures: signatures, 
         lastModified: new Date(),
-        status: 'Draft' // Optional: Mark as Draft
+        status: 'Draft' 
       });
-      // alert("Draft saved successfully! You can come back later.");
     } catch (error) {
       console.error("Error saving draft:", error);
       alert("Failed to save draft.");
     }
-
-    await logAction(id, "Draft Saved", "User saved signature positions.");
+    await logAction(id, "Draft Saved", "User saved positions.");
     setSavingDraft(false);
   };
 
   const generateSignedPDF = async () => {
     const existingPdfBytes = await fetch(documentData.fileUrl).then(res => res.arrayBuffer());
     const pdfDoc = await PDFDocument.load(existingPdfBytes);
-    const pages = pdfDoc.getPages();
+    const helveticaFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
 
+    const pages = pdfDoc.getPages();
     const firstPage = pages[0];
-    const { width: pdfPageWidth, height: pdfPageHeight } = firstPage.getSize();
+    const { height: pdfPageHeight } = firstPage.getSize();
+    const pdfPageWidth = firstPage.getWidth();
     const domPageWidth = pdfContainerRef.current.offsetWidth; 
     const scaleRatio = pdfPageWidth / domPageWidth;
 
-    for (const sig of signatures) {
-      const pageIndex = sig.page - 1; 
+    for (const item of signatures) {
+      const pageIndex = item.page - 1; 
       if (pageIndex < 0 || pageIndex >= pages.length) continue;
 
       const page = pages[pageIndex];
-      const sigImageBytes = await fetch(sig.url).then(res => res.arrayBuffer());
-      
-      let sigImage;
-      try {
-        sigImage = await pdfDoc.embedPng(sigImageBytes);
-      } catch (e) {
-        sigImage = await pdfDoc.embedJpg(sigImageBytes); 
+      const x = item.x * scaleRatio;
+      const y = pdfPageHeight - ((item.y + item.height) * scaleRatio); 
+      const w = item.width * scaleRatio;
+      const h = item.height * scaleRatio;
+
+      if (item.type === 'text') {
+        const fontSize = h * 0.6; 
+        const textY = y + (h * 0.25); 
+
+        page.drawText(item.text, {
+          x: x,
+          y: textY,
+          size: fontSize,
+          font: helveticaFont,
+          color: rgb(0, 0, 0),
+        });
+
+      } else {
+        const sigImageBytes = await fetch(item.url).then(res => res.arrayBuffer());
+        let sigImage;
+        try {
+          sigImage = await pdfDoc.embedPng(sigImageBytes);
+        } catch (e) {
+          sigImage = await pdfDoc.embedJpg(sigImageBytes); 
+        }
+        page.drawImage(sigImage, { x, y, width: w, height: h });
       }
-
-      const x = sig.x * scaleRatio;
-      const y = pdfPageHeight - ((sig.y + sig.height) * scaleRatio); 
-      const w = sig.width * scaleRatio;
-      const h = sig.height * scaleRatio;
-
-      page.drawImage(sigImage, { x, y, width: w, height: h });
     }
 
     return await pdfDoc.save();
@@ -152,11 +253,10 @@ const Editor = () => {
       status: 'Signed',
       fileUrl: updatedUrl,
       lastModified: new Date().toISOString(),
-      signatures: [] // Clear draft signatures since it is now baked in
+      signatures: [] 
     });
 
-    await logAction(id, "Document Signed", "User finalized and signed the document.");
-
+    await logAction(id, "Document Signed", "User finalized document.");
     return { blob, url: updatedUrl };
   };
 
@@ -183,7 +283,6 @@ const Editor = () => {
     setProcessing(true);
     try {
       const { url } = await saveToFirebase();
-      
       const storageRef = ref(storage, documentData.storagePath);
       await updateMetadata(storageRef, {
         contentDisposition: `attachment; filename="signed_${documentData.name}"`,
@@ -202,8 +301,7 @@ const Editor = () => {
 
       await emailjs.send('service_g23671h', 'template_n5lpdpv', templateParams, '0WB5-X4FNk0oe3RAt');
       await updateDoc(doc(db, "documents", id), { status: 'Sent' });
-      
-      await logAction(id, "Document Emailed", `Signed PDF sent to ${recipientEmail}`);
+      await logAction(id, "Document Emailed", `Sent to ${recipientEmail}`);
       setProcessing(false);
       return true;
     } catch (error) {
@@ -214,11 +312,9 @@ const Editor = () => {
     }
   };
 
-  // Helpers
   const changePage = (offset) => setPageNumber(prev => Math.min(Math.max(1, prev + offset), numPages || 1));
-  const handleSaveSignature = (url) => setSignatures([...signatures, { id: Date.now(), url, x: 50, y: 50, width: 200, height: 100, page: pageNumber }]);
-  const updateSignature = (id, props) => setSignatures(signatures.map(s => s.id === id ? { ...s, ...props } : s));
-  const removeSignature = (id) => setSignatures(signatures.filter(s => s.id !== id));
+  const updateElement = (id, props) => setSignatures(signatures.map(s => s.id === id ? { ...s, ...props } : s));
+  const removeElement = (id) => setSignatures(signatures.filter(s => s.id !== id));
 
   if (loading) return <div className="h-screen flex items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-blue-600"/></div>;
 
@@ -230,9 +326,7 @@ const Editor = () => {
           <h1 className="font-bold text-slate-800 truncate max-w-[200px]">{documentData?.name}</h1>
         </div>
         
-        {/* Buttons Group */}
         <div className="flex items-center gap-2">
-          {/* 1. Save Draft Button */}
           <button 
             onClick={handleSaveDraft}
             disabled={savingDraft}
@@ -242,7 +336,6 @@ const Editor = () => {
             <span className="hidden md:inline">Save Draft</span>
           </button>
 
-          {/* 2. Finish Button */}
           <button 
             onClick={() => setIsFinishModalOpen(true)}
             className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 shadow-sm"
@@ -255,8 +348,40 @@ const Editor = () => {
 
       <div className="flex flex-1 overflow-hidden relative">
         <aside className="w-20 bg-white border-r border-slate-200 flex flex-col items-center py-6 gap-6 z-20 relative">
-          <ToolButton icon={<PenTool className="w-5 h-5" />} label="Sign" onClick={() => setIsSigModalOpen(true)} active />
-          <ToolButton icon={<Eraser className="w-5 h-5" />} label="Clear All" onClick={() => setSignatures([])} />
+          <ToolButton 
+            icon={<PenTool className="w-5 h-5" />} 
+            label="Sign" 
+            onClick={() => setIsSigModalOpen(true)} 
+            active 
+          />
+          
+          <ToolButton 
+            icon={<Calendar className="w-5 h-5" />} 
+            label="Date" 
+            onClick={handleAddDate} 
+          />
+          
+          <div className="w-10 border-b border-slate-200 my-1"></div>
+
+          <ToolButton 
+            icon={<User className="w-5 h-5" />} 
+            label="First Name" 
+            onClick={() => handleAddName('first')} 
+          />
+
+          <ToolButton 
+            icon={<User className="w-5 h-5" />} 
+            label="Last Name" 
+            onClick={() => handleAddName('last')} 
+          />
+          
+          <div className="w-10 border-b border-slate-200 my-1"></div>
+
+          <ToolButton 
+            icon={<Eraser className="w-5 h-5" />} 
+            label="Clear All" 
+            onClick={() => setSignatures([])} 
+          />
         </aside>
 
         <main className="flex-1 bg-slate-200/50 overflow-auto flex justify-center p-8 relative">
@@ -267,8 +392,13 @@ const Editor = () => {
                   <Page pageNumber={pageNumber} scale={scale} renderTextLayer={false} renderAnnotationLayer={false} />
                 </Document>
               )}
-              {signatures.filter(sig => sig.page === pageNumber).map((sig) => (
-                <DraggableSignature key={sig.id} sig={sig} onUpdate={updateSignature} onRemove={removeSignature} />
+              {signatures.filter(sig => sig.page === pageNumber).map((item) => (
+                <DraggableElement 
+                  key={item.id} 
+                  data={item} 
+                  onUpdate={updateElement} 
+                  onRemove={removeElement} 
+                />
               ))}
             </div>
           </div>
@@ -297,7 +427,7 @@ const Editor = () => {
 
 const ToolButton = ({ icon, label, onClick, active }) => (
   <button onClick={onClick} className={`flex flex-col items-center gap-1 p-2 rounded-lg transition-all ${active ? 'text-blue-600 bg-blue-50' : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'}`}>
-    {icon} <span className="text-[10px] font-medium">{label}</span>
+    {icon} <span className="text-[10px] font-medium text-center">{label}</span>
   </button>
 );
 
