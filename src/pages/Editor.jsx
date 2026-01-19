@@ -355,10 +355,17 @@ const Editor = () => {
             className="flex items-center gap-2 px-3 py-2 text-slate-600 bg-white border border-slate-200 text-xs md:text-sm font-medium rounded-lg hover:bg-slate-50 transition-colors"
           >
             {savingDraft ? <Loader2 className="w-4 h-4 animate-spin"/> : <Save className="w-4 h-4" />}
-            <span className="hidden md:inline">Draft</span>
+            <span className="hidden md:inline">Save Draft</span>
           </button>
 
-          <div className="relative group">
+          <button 
+            onClick={() => setIsFinishModalOpen(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 shadow-sm"
+          >
+            <Download className="w-4 h-4" /> 
+            <span className="hidden md:inline">Finish & Send</span>
+          </button>
+          {/* <div className="relative group">
             <button 
               onClick={() => setIsFinishModalOpen(true)}
               disabled={!hasSignature}
@@ -372,7 +379,7 @@ const Editor = () => {
                 Please add a signature to finish.
               </div>
             )}
-          </div>
+          </div> */}
         </div>
       </header>
 
@@ -388,13 +395,11 @@ const Editor = () => {
         </aside>
 
         {/* --- MAIN CONTENT AREA --- */}
-        {/* FIX 1: Allow Horizontal Scroll (overflow-auto handles X and Y) */}
         <main 
           className="flex-1 bg-slate-200/50 overflow-auto relative" 
           onClick={handleBackgroundClick} 
         >
-          {/* FIX 2: Content Wrapper with min-w-fit so it doesn't get clipped */}
-          {/* FIX 3: Huge bottom padding (pb-40) to clear the bottom toolbar */}
+          {/* Scrollable Container with Extra Bottom Padding */}
           <div className="min-w-fit min-h-full flex flex-col items-center p-4 md:p-8 pb-40">
             
             <div ref={pdfContainerRef} className="relative inline-block shadow-2xl border border-slate-300 bg-white select-none">
@@ -402,13 +407,22 @@ const Editor = () => {
                 <Document 
                   file={documentData.fileUrl} 
                   onLoadSuccess={onDocumentLoadSuccess} 
-                  loading={<div className="h-[300px] flex items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-blue-600"/></div>}
+                  // --- FIX: Mimic A4/Letter Aspect Ratio for Loading State ---
+                  loading={
+                    <div className="w-[85vw] md:w-[600px] aspect-[1/1.41] flex items-center justify-center bg-white text-slate-400">
+                      <div className="flex flex-col items-center gap-2">
+                        <Loader2 className="w-10 h-10 animate-spin text-blue-600"/>
+                        <span className="text-sm font-medium">Loading Document...</span>
+                      </div>
+                    </div>
+                  }
                 >
                   <Page 
                     pageNumber={pageNumber} 
                     scale={scale} 
                     renderTextLayer={false} 
                     renderAnnotationLayer={false}
+                    className="max-w-full h-auto" 
                   />
                 </Document>
               )}
@@ -426,7 +440,7 @@ const Editor = () => {
 
           </div>
           
-          {/* Page Controls (Floating) */}
+          {/* Page Controls */}
           {numPages && numPages > 1 && (
             <div className="fixed bottom-24 md:bottom-8 left-1/2 transform -translate-x-1/2 bg-white px-4 py-2 md:px-6 md:py-3 rounded-full shadow-xl border border-slate-200 flex items-center gap-4 md:gap-6 z-40">
               <button disabled={pageNumber <= 1} onClick={() => changePage(-1)} className="p-2 hover:bg-slate-100 rounded-full disabled:opacity-30"><ChevronLeft className="w-5 h-5 md:w-6 md:h-6" /></button>
