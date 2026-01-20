@@ -7,6 +7,7 @@ import Login from './pages/Login';
 import Signup from './pages/Signup';
 import Dashboard from './pages/Dashboard';
 import Editor from './pages/Editor'; 
+import RecipientSign from './pages/RecipientSign';
 
 // Protected Route Component
 // If user is NOT logged in, kick them back to Login page
@@ -43,6 +44,8 @@ function App() {
               </PrivateRoute>
             } 
           />
+
+          <Route path="/sign/:id" element={<RecipientSign />} />
         </Routes>
       </Router>
     </AuthProvider>

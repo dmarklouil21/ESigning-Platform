@@ -297,7 +297,7 @@ const DocumentCard = ({ docData, date, onClick, onHistory, onMenuAction }) => {
     onMenuAction(action, docData);
   };
 
-  const isSigned = docData.status === 'Signed' || docData.status === 'Sent';
+  const isSigned = docData.status === 'Signed' || docData.status === 'Sent' || docData.status === 'Completed';
 
   // FIX: Dynamic Z-Index to prevent overlay issues
   // If this card's menu is open, it gets z-50. If not, z-0.
