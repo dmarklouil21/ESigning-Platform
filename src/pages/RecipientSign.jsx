@@ -115,10 +115,10 @@ const RecipientSign = () => {
       const { width: pdfPageWidth, height: pdfPageHeight } = page.getSize();
       
       const scaleRatio = pdfPageWidth / 600; 
-      // const yCorrection = 4; 
+      const yCorrection = 4; 
 
       const x = item.x * scaleRatio;
-      const y = pdfPageHeight - ((item.y + item.height) * scaleRatio);
+      const y = pdfPageHeight - ((item.y + item.height) * scaleRatio) + yCorrection;
       const w = item.width * scaleRatio;
       const h = item.height * scaleRatio;
 
@@ -127,10 +127,52 @@ const RecipientSign = () => {
         const textY = y + (h * 0.25); 
         page.drawText(item.text, { x, y: textY, size: fontSize, font: helveticaFont, color: rgb(0, 0, 0) });
       } else if (item.type === 'image') {
+      
         const sigImageBytes = await fetch(item.url).then(res => res.arrayBuffer());
         let sigImage;
-        try { sigImage = await pdfDoc.embedPng(sigImageBytes); } catch (e) { sigImage = await pdfDoc.embedJpg(sigImageBytes); }
-        page.drawImage(sigImage, { x, y, width: w, height: h });
+        try { 
+          sigImage = await pdfDoc.embedPng(sigImageBytes); 
+        } catch (e) { 
+          sigImage = await pdfDoc.embedJpg(sigImageBytes); 
+        }
+
+        // --- ASPECT RATIO FIX START ---
+        const imgDims = sigImage.scale(1); // Get native dimensions
+        const imgWidth = imgDims.width;
+        const imgHeight = imgDims.height;
+        const imgRatio = imgWidth / imgHeight;
+
+        // The box dimensions on the PDF page
+        const boxWidth = w;
+        const boxHeight = h;
+        const boxRatio = boxWidth / boxHeight;
+
+        let finalWidth = boxWidth;
+        let finalHeight = boxHeight;
+
+        // Calculate "Contain" logic (Fit image inside box without stretching)
+        if (imgRatio > boxRatio) {
+          // Image is wider than the box: Constrain by width
+          finalWidth = boxWidth;
+          finalHeight = boxWidth / imgRatio;
+        } else {
+          // Image is taller than the box: Constrain by height
+          finalHeight = boxHeight;
+          finalWidth = boxHeight * imgRatio;
+        }
+
+        // Center the image within the placeholder box
+        const xOffset = (boxWidth - finalWidth) / 2;
+        const yOffset = (boxHeight - finalHeight) / 2;
+        
+        // Draw with calculated dimensions
+        page.drawImage(sigImage, { 
+          x: x + xOffset, 
+          y: y + yOffset, 
+          width: finalWidth, 
+          height: finalHeight 
+        });
+        // --- ASPECT RATIO FIX END ---
       }
     }
 

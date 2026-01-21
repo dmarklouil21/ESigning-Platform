@@ -173,7 +173,7 @@ const Dashboard = () => {
       handleDownload(docData);
     } else if (action === 'email') {
       setSelectedDocForAction(docData);
-      setFinishModalMode('email_only'); // <--- Tell Modal to go straight to Email
+      setFinishModalMode('email_input');
       setIsFinishModalOpen(true);
     } else if (action === 'delete') {
       setDocToDelete(docData.id);
