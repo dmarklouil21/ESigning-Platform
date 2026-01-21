@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Plus, FileText, PenTool, Clock, Search, LogOut, Loader2, MoreVertical, Download, Send, Trash2, History, AlertTriangle, X } from 'lucide-react';
+import { useNavigate, Link } from 'react-router-dom'; // <--- Added Link
+import { Plus, FileText, PenTool, Clock, Search, LogOut, Loader2, MoreVertical, Download, Send, Trash2, History, AlertTriangle, Zap } from 'lucide-react'; // <--- Added Zap icon
 import { collection, query, where, onSnapshot, doc, deleteDoc, updateDoc } from 'firebase/firestore';
 import { ref, updateMetadata } from 'firebase/storage';
 import { db, storage } from '../firebase';
@@ -40,13 +40,13 @@ const DeleteModal = ({ isOpen, onClose, onConfirm, isDeleting }) => {
 };
 
 const Dashboard = () => {
-  const { user, logout } = useAuth();
+  const { user, logout, isPro } = useAuth(); // <--- Destructure isPro
   const navigate = useNavigate();
   
   // Data State
   const [docs, setDocs] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState(''); // Search State
+  const [searchTerm, setSearchTerm] = useState(''); 
 
   // Modals State
   const [isUploadOpen, setIsUploadOpen] = useState(false);
@@ -56,7 +56,7 @@ const Dashboard = () => {
   // Email/Action Modal State
   const [isFinishModalOpen, setIsFinishModalOpen] = useState(false);
   const [selectedDocForAction, setSelectedDocForAction] = useState(null);
-  const [finishModalMode, setFinishModalMode] = useState('select'); // 'select' or 'email_only'
+  const [finishModalMode, setFinishModalMode] = useState('select'); 
   const [processingAction, setProcessingAction] = useState(false);
 
   // Delete State
@@ -70,7 +70,7 @@ const Dashboard = () => {
     const q = query(collection(db, "documents"), where("uid", "==", user.uid));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const fetchedDocs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      fetchedDocs.sort((a, b) => b.createdAt?.seconds - a.createdAt?.seconds); // Sort by Newest
+      fetchedDocs.sort((a, b) => b.createdAt?.seconds - a.createdAt?.seconds); 
       setDocs(fetchedDocs);
       setLoading(false);
     });
@@ -78,12 +78,15 @@ const Dashboard = () => {
   }, [user]);
 
   // --- Filtering Logic ---
+  const docCount = docs.length;
+  const FREE_LIMIT = 3;
+  const hasReachedLimit = !isPro && docCount >= FREE_LIMIT;
+
   const filteredDocs = docs.filter(doc => 
     doc.name.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   // --- Actions ---
-
   const handleDownload = async (docData) => {
     if (!docData.fileUrl) return;
     try {
@@ -104,7 +107,6 @@ const Dashboard = () => {
 
   const handleEmail = async (recipientEmail) => {
     if (!selectedDocForAction) return;
-    
     setProcessingAction(true); 
 
     try {
@@ -128,11 +130,10 @@ const Dashboard = () => {
       await emailjs.send(
         'service_g23671h', 
         'template_n5lpdpv', 
-        templateParams, 
+        'templateParams', 
         '0WB5-X4FNk0oe3RAt'
       );
 
-      // Log success
       await updateDoc(doc(db, "documents", selectedDocForAction.id), { status: 'Sent' });
 
       setProcessingAction(false); 
@@ -145,7 +146,6 @@ const Dashboard = () => {
         alert("Failed to send email.");
       }
       setProcessingAction(false);
-      alert("Failed to send email. Check console.");
       return false;
     }
   };
@@ -173,11 +173,11 @@ const Dashboard = () => {
       handleDownload(docData);
     } else if (action === 'email') {
       setSelectedDocForAction(docData);
-      setFinishModalMode('email_only'); // <--- Tell Modal to go straight to Email
+      setFinishModalMode('email_input');
       setIsFinishModalOpen(true);
     } else if (action === 'delete') {
       setDocToDelete(docData.id);
-      setDeleteModalOpen(true); // Open Delete Modal
+      setDeleteModalOpen(true); 
     }
   };
 
@@ -192,9 +192,29 @@ const Dashboard = () => {
         <div className="flex items-center gap-2">
           <PenTool className="w-5 h-5 text-blue-600" />
           <div className="text-xl font-bold text-slate-800">SignFast</div>
+          
+          {/* PRO BADGE (Visible in header if Pro) */}
+          {isPro && (
+            <span className="ml-2 bg-gradient-to-r from-indigo-500 to-purple-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider shadow-sm">
+              PRO
+            </span>
+          )}
         </div>
+        
         <div className="flex items-center gap-4">
-          <div className="text-sm text-slate-600 hidden md:block">Welcome, {user?.displayName || user?.email}</div>
+          
+          {/* UPGRADE BUTTON (Visible if NOT Pro) */}
+          {!isPro && (
+             <Link to="/pricing" className="hidden sm:flex items-center gap-1.5 bg-gradient-to-r from-amber-200 to-yellow-400 text-yellow-900 px-3 py-1.5 rounded-full text-sm font-bold shadow-sm hover:shadow-md transition-all">
+                <Zap className="w-3.5 h-3.5 fill-current" />
+                Upgrade
+             </Link>
+          )}
+
+          {/* <div className="text-sm text-slate-600 hidden md:block">Welcome, {user?.displayName || user?.email}</div> */}
+          <Link to="/profile" className="text-sm text-slate-600 hidden md:block hover:text-blue-600 transition-colors cursor-pointer font-medium">
+            Welcome, {user?.displayName || user?.email}
+          </Link>
           <button onClick={handleLogout} className="p-2 text-slate-400 hover:text-red-500 transition-colors"><LogOut className="w-5 h-5" /></button>
         </div>
       </header>
@@ -202,15 +222,56 @@ const Dashboard = () => {
       <main className="max-w-6xl mx-auto px-6 py-10">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
           <div>
-            <h1 className="text-3xl font-bold text-slate-900">Dashboard</h1>
+            <div className="flex items-center gap-3">
+              <h1 className="text-3xl font-bold text-slate-900">Dashboard</h1>
+              
+              {/* PRO BADGE (Next to Title) */}
+              {isPro && (
+                <span className="bg-gradient-to-r from-blue-600 to-purple-600 text-white text-xs px-3 py-1 rounded-full uppercase tracking-wider shadow-lg">
+                  PRO PLAN
+                </span>
+              )}
+            </div>
             <p className="text-slate-500 mt-1">Manage and track your documents.</p>
           </div>
-          <button onClick={() => setIsUploadOpen(true)} className="flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-xl shadow-lg shadow-blue-200 hover:bg-blue-700 transition-all font-medium">
-            <Plus className="w-5 h-5" /> Upload New
+          <button 
+            onClick={() => setIsUploadOpen(true)} 
+            // className="flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-xl shadow-lg shadow-blue-200 hover:bg-blue-700 transition-all font-medium"
+            className={`flex items-center gap-2 px-6 py-3 rounded-xl shadow-lg transition-all font-medium ${
+              hasReachedLimit 
+                ? 'bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200 shadow-none' // Disabled Style
+                : 'bg-blue-600 text-white shadow-blue-200 hover:bg-blue-700' // Active Style
+            }`}
+          >
+            <Plus className="w-5 h-5" /> 
+            {hasReachedLimit ? "Limit Reached" : "Upload New"}
           </button>
         </div>
 
-        {/* --- Search Bar Restored --- */}
+        {/* --- NEW: Usage Progress Bar (Optional but nice) --- */}
+        {!isPro && (
+           <div className="mb-6 bg-white p-4 rounded-xl border border-slate-100 flex items-center gap-4">
+             <div className="flex-1">
+               <div className="flex justify-between text-xs font-bold text-slate-500 mb-2">
+                 <span>FREE PLAN USAGE</span>
+                 <span>{docCount} / {FREE_LIMIT} Docs</span>
+               </div>
+               <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+                 <div 
+                   className={`h-full rounded-full transition-all duration-500 ${hasReachedLimit ? 'bg-red-500' : 'bg-blue-500'}`} 
+                   style={{ width: `${Math.min((docCount / FREE_LIMIT) * 100, 100)}%` }}
+                 />
+               </div>
+             </div>
+             {hasReachedLimit && (
+               <Link to="/pricing" className="text-xs font-bold text-blue-600 hover:underline shrink-0">
+                 Upgrade to Unlock
+               </Link>
+             )}
+           </div>
+        )}
+
+        {/* ... Search Bar and List remain unchanged ... */}
         <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 mb-8 flex gap-4">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-3.5 w-5 h-5 text-slate-400" />
@@ -251,10 +312,14 @@ const Dashboard = () => {
         </div>
       </main>
 
-      <UploadModal isOpen={isUploadOpen} onClose={() => setIsUploadOpen(false)} onUploadSuccess={() => setIsUploadOpen(false)} />
+      <UploadModal 
+        isOpen={isUploadOpen} 
+        onClose={() => setIsUploadOpen(false)} 
+        onUploadSuccess={() => setIsUploadOpen(false)} 
+        hasReachedLimit={hasReachedLimit}
+      />
       <HistoryModal isOpen={isHistoryOpen} onClose={() => setIsHistoryOpen(false)} docId={selectedHistoryDoc.id} docName={selectedHistoryDoc.name} />
       
-      {/* Delete Confirmation Modal */}
       <DeleteModal 
         isOpen={deleteModalOpen} 
         onClose={() => setDeleteModalOpen(false)} 
@@ -270,8 +335,8 @@ const Dashboard = () => {
           setIsFinishModalOpen(false);
         }}
         onEmail={handleEmail}
-        processing={processingAction} // Handled locally in dashboard action if simple, or inside modal
-        initialMode={finishModalMode} // <--- Pass the mode ('email_only' or 'select')
+        processing={processingAction} 
+        initialMode={finishModalMode} 
       />
     </div>
   );
@@ -297,11 +362,7 @@ const DocumentCard = ({ docData, date, onClick, onHistory, onMenuAction }) => {
     onMenuAction(action, docData);
   };
 
-  const isSigned = docData.status === 'Signed' || docData.status === 'Sent';
-
-  // FIX: Dynamic Z-Index to prevent overlay issues
-  // If this card's menu is open, it gets z-50. If not, z-0.
-  // This ensures the dropdown floats ABOVE the card below it.
+  const isSigned = docData.status === 'Signed' || docData.status === 'Sent' || docData.status === 'Completed';
   const cardZIndex = showMenu ? 'z-50' : 'z-0';
 
   return (

@@ -6,10 +6,10 @@ import {
   signOut, 
   onAuthStateChanged,
   updateProfile,
-  sendEmailVerification, // 1. Added import
-  sendPasswordResetEmail // Optional: Handy to have
+  sendEmailVerification, 
+  sendPasswordResetEmail 
 } from 'firebase/auth';
-import { doc, setDoc } from 'firebase/firestore'; 
+import { doc, setDoc, onSnapshot } from 'firebase/firestore'; // <--- Added onSnapshot
 import { auth, db } from '../firebase'; 
 
 const AuthContext = createContext();
@@ -18,26 +18,28 @@ export const useAuth = () => useContext(AuthContext);
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
+  const [userProfile, setUserProfile] = useState(null); // <--- New: Stores DB data (Pro status)
   const [loading, setLoading] = useState(true);
 
   // 1. Sign Up Function
   const signup = async (email, password, firstName, lastName) => {
     const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-    const user = userCredential.user;
+    const createdUser = userCredential.user;
 
-    await updateProfile(user, {
+    await updateProfile(createdUser, {
       displayName: `${firstName} ${lastName}`
     });
 
-    await setDoc(doc(db, "users", user.uid), {
+    await setDoc(doc(db, "users", createdUser.uid), {
       firstName: firstName,
       lastName: lastName,
       email: email,
       createdAt: new Date().toISOString(),
-      uid: user.uid
+      uid: createdUser.uid,
+      subscriptionStatus: 'free' // Default status
     });
     
-    return user;
+    return createdUser;
   };
 
   // 2. Login Function
@@ -50,17 +52,15 @@ export const AuthProvider = ({ children }) => {
     return signOut(auth);
   };
 
-  // 4. Send Verification Email (New Helper)
-  const sendVerificationEmail = (user) => {
-    // If no user is passed, use the current context user
-    const targetUser = user || auth.currentUser;
+  // 4. Send Verification Email
+  const sendVerificationEmail = (currentUser) => {
+    const targetUser = currentUser || auth.currentUser;
     if (targetUser) {
       return sendEmailVerification(targetUser);
     }
   };
 
-  // 5. Reload User (New Helper)
-  // Essential for checking if emailVerified status changed without re-logging in
+  // 5. Reload User
   const reloadUser = async () => {
     if (auth.currentUser) {
       await auth.currentUser.reload();
@@ -69,22 +69,54 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  // 6. Monitor Auth State
+  // 6. Monitor Auth State & Profile Data
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+    // A. Auth Listener
+    const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
-      setLoading(false);
+      
+      if (!currentUser) {
+        setUserProfile(null);
+        setLoading(false);
+      }
     });
-    return unsubscribe;
+
+    return () => unsubscribeAuth();
   }, []);
+
+  // B. Database Listener (Runs only when user is logged in)
+  useEffect(() => {
+    let unsubscribeSnapshot = null;
+
+    if (user) {
+      const userRef = doc(db, "users", user.uid);
+      
+      // Listen for real-time changes to the user's document
+      unsubscribeSnapshot = onSnapshot(userRef, (docSnap) => {
+        if (docSnap.exists()) {
+          setUserProfile(docSnap.data());
+        }
+        setLoading(false);
+      });
+    }
+
+    return () => {
+      if (unsubscribeSnapshot) unsubscribeSnapshot();
+    };
+  }, [user]);
+
+  // Derived Helper: Check if user is Pro
+  const isPro = userProfile?.subscriptionStatus === 'active';
 
   const value = {
     user,
+    userProfile, // Access to raw DB data
+    isPro,       // Simple boolean for UI
     signup,
     login,
     logout,
-    sendVerificationEmail, // Exported
-    reloadUser             // Exported
+    sendVerificationEmail,
+    reloadUser
   };
 
   return (
