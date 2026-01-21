@@ -8,6 +8,8 @@ import Signup from './pages/Signup';
 import Dashboard from './pages/Dashboard';
 import Editor from './pages/Editor'; 
 import RecipientSign from './pages/RecipientSign';
+import Pricing from './pages/Pricing';
+import Profile from './pages/Profile';
 
 // Protected Route Component
 // If user is NOT logged in, kick them back to Login page
@@ -35,6 +37,15 @@ function App() {
             } 
           /> 
 
+          <Route 
+            path="/profile" 
+            element={
+              <PrivateRoute>
+                <Profile />
+              </PrivateRoute>
+            } 
+          />
+
           {/* Editor Route */}
           <Route 
             path="/editor/:id" 
@@ -46,6 +57,15 @@ function App() {
           />
 
           <Route path="/sign/:id" element={<RecipientSign />} />
+
+          <Route 
+            path="/pricing" 
+            element={
+              <PrivateRoute>
+                <Pricing />
+              </PrivateRoute>
+            } 
+          />
         </Routes>
       </Router>
     </AuthProvider>

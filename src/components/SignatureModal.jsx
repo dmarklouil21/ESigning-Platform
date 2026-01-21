@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import SignatureCanvas from 'react-signature-canvas';
 import { X, Type, PenTool, Check } from 'lucide-react';
 
@@ -22,6 +22,31 @@ const SignatureModal = ({ isOpen, onClose, onSave }) => {
   const [activeTab, setActiveTab] = useState('draw'); 
   const [typedSignature, setTypedSignature] = useState('');
   const [selectedFont, setSelectedFont] = useState(fontOptions[0].value);
+
+  useEffect(() => {
+    if (isOpen && activeTab === 'draw' && sigCanvas.current) {
+      const canvas = sigCanvas.current.getCanvas();
+      if (!canvas) return;
+
+      // Get the device pixel ratio (e.g., 2 for Retina, 1 for standard)
+      const ratio = Math.max(window.devicePixelRatio || 1, 1);
+
+      // Cache the visual size
+      const width = canvas.offsetWidth;
+      const height = canvas.offsetHeight;
+
+      // Set the internal resolution to match the ratio (High Res)
+      canvas.width = width * ratio;
+      canvas.height = height * ratio;
+
+      // Scale the drawing context so mouse coords match the new resolution
+      const ctx = canvas.getContext("2d");
+      ctx.scale(ratio, ratio);
+
+      // Clear to apply settings
+      sigCanvas.current.clear(); 
+    }
+  }, [isOpen, activeTab]);
 
   if (!isOpen) return null;
 
@@ -141,7 +166,14 @@ const SignatureModal = ({ isOpen, onClose, onSave }) => {
               <SignatureCanvas 
                 ref={sigCanvas}
                 penColor='black'
-                canvasProps={{width: 400, height: 200, className: 'cursor-crosshair'}} 
+                velocityFilterWeight={0.7}
+                minWidth={1}   // Increased slightly for high-res visibility
+                maxWidth={3}   // Increased slightly
+                throttle={16}
+                canvasProps={{
+                  className: 'cursor-crosshair',
+                  style: { width: '100%', height: '200px' } 
+                }}
               />
             ) : (
               <div className="flex flex-col">

@@ -345,28 +345,6 @@ const Editor = () => {
     return { blob, url: updatedUrl };
   };
 
-  // const handleDownload = async () => {
-  //   setProcessing(true);
-  //   try {
-  //     const { blob } = await saveToFirebase();
-  //     if (blob) {
-  //       const url = URL.createObjectURL(blob);
-  //       const link = document.createElement('a');
-  //       link.href = url;
-  //       link.download = `signed_${documentData.name}`;
-  //       document.body.appendChild(link);
-  //       link.click();
-  //       document.body.removeChild(link);
-  //     } else {
-  //       alert("Document sent to recipients!");
-  //     }
-  //     setIsFinishModalOpen(false);
-  //   } catch (error) {
-  //     console.error("Download failed", error);
-  //     alert("Failed to save.");
-  //   }
-  //   setProcessing(false);
-  // };
   const handleDownload = async () => {
     setProcessing(true);
     try {
@@ -406,10 +384,6 @@ const Editor = () => {
     setProcessing(false);
   };
 
-  // const handleEmail = async (recipientEmail) => {
-  //   setProcessing(false);
-  //   return true; 
-  // };
   const handleEmail = async (targetEmail) => {
     setProcessing(true);
     try {
@@ -446,8 +420,9 @@ const Editor = () => {
         // Wait for all emails to send
         await Promise.all(emailPromises);
         
-        alert(`Sent ${recipients.length} invitations successfully!`);
-        navigate('/dashboard'); // Redirect back to dashboard
+        // alert(`Sent ${recipients.length} invitations successfully!`);
+        // navigate('/dashboard'); 
+        setProcessing(false);
         return true;
       } 
 
@@ -512,16 +487,6 @@ const Editor = () => {
             {savingDraft ? <Loader2 className="w-4 h-4 animate-spin"/> : <Save className="w-4 h-4" />}
             <span className="hidden md:inline">Draft</span>
           </button>
-          {/* <div className="relative group">
-            <button 
-              onClick={() => setIsFinishModalOpen(true)}
-              disabled={(!signatures.some(s=>s.type==='image') && !isRemote) || (isRemote && recipients.length === 0)}
-              className="flex items-center gap-2 px-3 py-2 bg-blue-600 text-white text-xs md:text-sm font-medium rounded-lg hover:bg-blue-700 shadow-sm disabled:opacity-50 transition-all"
-            >
-              <Download className="w-4 h-4" /> 
-              <span className="hidden md:inline">{recipients.length > 0 ? "Send Envelope" : "Finish"}</span>
-            </button>
-          </div> */}
           <div className="relative group">
             {/* THE MAIN ACTION BUTTON */}
             <button 
@@ -529,7 +494,7 @@ const Editor = () => {
               onClick={isCompleted ? handleDownload : () => setIsFinishModalOpen(true)}
               
               // Logic: Disable if empty (unless it's already completed)
-              disabled={(!signatures.some(s=>s.type==='image') && !isRemote && !isCompleted) || (isRemote && recipients.length === 0 && !isCompleted)}
+              // disabled={(!signatures.some(s=>s.type==='image') && !isRemote && !isCompleted) || (isRemote && recipients.length === 0 && !isCompleted)}
               
               className={`flex items-center gap-2 px-3 py-2 text-white text-xs md:text-sm font-medium rounded-lg shadow-sm transition-all disabled:opacity-50 bg-blue-600 hover:bg-blue-700`}
             >

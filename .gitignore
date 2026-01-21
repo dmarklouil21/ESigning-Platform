@@ -23,9 +23,17 @@ dist-ssr
 *.sln
 *.sw?
 
+# Firebase Logs
+firebase-debug.log
+firebase-debug.*.log
+ui-debug.log
+
 # Local env files
 .env.local
 .env.development.local
 .env.test.local
 .env.production.local
 .env
+
+# Firebase Emulator Local Data (Optional, if you export data)
+firestore-debug.log

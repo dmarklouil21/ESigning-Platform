@@ -7,12 +7,13 @@ const FinishModal = ({ isOpen, onClose, onDownload, onEmail, processing, initial
 
   useEffect(() => {
     if (isOpen) {
+      // FIX: Explicitly check for all modes
       if (initialMode === 'email_only') {
-        // If context is Remote Signing, go straight to confirmation
-        setMode('confirm_send');
+        setMode('confirm_send'); // For Remote Signing (Editor)
+      } else if (initialMode === 'email_input') {
+        setMode('email_input');  // For Manual Email (Dashboard) <--- ADDED THIS CHECK
       } else {
-        // If context is Self Signing, allow choice
-        setMode('select');
+        setMode('select');       // Default (Self-Sign Editor)
       }
       setEmail('');
     }
@@ -61,7 +62,7 @@ const FinishModal = ({ isOpen, onClose, onDownload, onEmail, processing, initial
               </div>
               <h3 className="text-xl font-bold text-slate-800 mb-2">Sent Successfully!</h3>
               <p className="text-slate-500 mb-6">
-                The document invitations have been delivered.
+                The document have been delivered.
               </p>
               <button 
                 onClick={onClose} 
@@ -122,11 +123,19 @@ const FinishModal = ({ isOpen, onClose, onDownload, onEmail, processing, initial
               />
               <div className="flex gap-3">
                 <button 
-                  onClick={() => setMode('select')} 
+                  // onClick={() => setMode('select')} 
+                  onClick={() => {
+                    if (initialMode === 'email_input') {
+                      onClose(); // If came from Dashboard, Close the modal
+                    } else {
+                      setMode('select'); // If came from Editor, go Back to selection
+                    }
+                  }}
                   disabled={processing}
                   className="flex-1 py-3 bg-slate-100 text-slate-700 rounded-lg font-medium disabled:opacity-50"
                 >
-                  Back
+                  {/* Back */}
+                  {initialMode === 'email_input' ? 'Cancel' : 'Back'}
                 </button>
                 <button 
                   onClick={handleManualEmailSubmit} 
