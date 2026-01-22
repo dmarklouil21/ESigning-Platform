@@ -1,17 +1,22 @@
 import React, { useState, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useDropzone } from 'react-dropzone';
-import { Upload, X, FileText, User, Users, Loader2, Plus, Trash2 } from 'lucide-react';
+import { Upload, X, FileText, User, Users, Loader2, Lock, Sparkles, Zap, ArrowLeft, Trash2 } from 'lucide-react'; // Added icons
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { collection, addDoc } from 'firebase/firestore';
 import { db, storage } from '../firebase';
 import { useAuth } from '../context/AuthContext';
 
-const UploadModal = ({ isOpen, onClose, onUploadSuccess }) => {
-  const { user } = useAuth();
-  const [step, setStep] = useState(1); // Step 1: File/Mode, Step 2: Recipients
+const UploadModal = ({ isOpen, onClose, onUploadSuccess, hasReachedLimit }) => {
+  const { user, isPro } = useAuth();
+  const navigate = useNavigate();
+  
+  // State
+  const [step, setStep] = useState(1);
   const [file, setFile] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [signingMode, setSigningMode] = useState('ME'); 
+  const [showUpsell, setShowUpsell] = useState(false); // <--- NEW: Controls the "Feature Locked" view
   
   // Recipient State
   const [recipients, setRecipients] = useState([]);
@@ -26,6 +31,7 @@ const UploadModal = ({ isOpen, onClose, onUploadSuccess }) => {
     onDrop, accept: { 'application/pdf': ['.pdf'] }, multiple: false
   });
 
+  // ... (Recipient handlers remain the same) ...
   const handleAddRecipient = (e) => {
     e.preventDefault();
     if (newRecipientName && newRecipientEmail) {
@@ -48,7 +54,6 @@ const UploadModal = ({ isOpen, onClose, onUploadSuccess }) => {
   const handleFinalUpload = async () => {
     if (!file || !user) return;
     
-    // Validation for Remote Mode
     if (signingMode === 'OTHERS' && recipients.length === 0) {
       alert("Please add at least one recipient.");
       return;
@@ -70,15 +75,16 @@ const UploadModal = ({ isOpen, onClose, onUploadSuccess }) => {
         status: 'Draft',
         type: signingMode, 
         signatures: [],
-        recipients: signingMode === 'OTHERS' ? recipients : [] // Save the list!
+        recipients: signingMode === 'OTHERS' ? recipients : [] 
       });
 
       onUploadSuccess();
-      // Reset
+      // Reset State
       setFile(null);
       setSigningMode('ME');
       setRecipients([]);
       setStep(1);
+      setShowUpsell(false);
     } catch (error) {
       console.error("Upload failed", error);
       alert("Failed to upload document.");
@@ -86,8 +92,84 @@ const UploadModal = ({ isOpen, onClose, onUploadSuccess }) => {
     setUploading(false);
   };
 
+  // --- NEW: Handle Mode Selection ---
+  const handleModeSelect = (mode) => {
+    if (mode === 'OTHERS' && !isPro) {
+      setShowUpsell(true); // <--- Trigger the custom Upsell View
+      return;
+    }
+    setSigningMode(mode);
+  };
+
   if (!isOpen) return null;
 
+  // --- 1. LIMIT REACHED VIEW (Priority 1) ---
+  if (hasReachedLimit) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-fade-in">
+        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden text-center p-8">
+           <div className="w-16 h-16 bg-gradient-to-br from-amber-100 to-orange-100 rounded-full flex items-center justify-center mx-auto mb-6">
+             <Lock className="w-8 h-8 text-orange-500" />
+           </div>
+           <h2 className="text-2xl font-bold text-slate-900 mb-2">Free Limit Reached</h2>
+           <p className="text-slate-500 mb-8">
+             You have used your 3 free documents. Upgrade to Pro for unlimited uploads and signatures.
+           </p>
+           <div className="flex flex-col gap-3">
+             <button onClick={() => navigate('/pricing')} className="w-full py-3.5 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 transition-all shadow-lg shadow-blue-200">
+               Upgrade to Pro
+             </button>
+             <button onClick={onClose} className="w-full py-3.5 bg-white border border-slate-200 text-slate-600 font-bold rounded-xl hover:bg-slate-50 transition-all">
+               Maybe Later
+             </button>
+           </div>
+        </div>
+      </div>
+    );
+  }
+
+  // --- 2. FEATURE LOCKED VIEW (Priority 2) ---
+  // This shows up when they click the "Remote" button
+  if (showUpsell) {
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-fade-in">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden text-center p-8 relative">
+                {/* Close Button */}
+                <button onClick={() => setShowUpsell(false)} className="absolute top-4 right-4 text-slate-300 hover:text-slate-500">
+                    <X className="w-5 h-5" />
+                </button>
+
+                <div className="w-16 h-16 bg-gradient-to-br from-purple-100 to-indigo-100 rounded-full flex items-center justify-center mx-auto mb-6">
+                    <Sparkles className="w-8 h-8 text-purple-600" />
+                </div>
+                
+                <h2 className="text-2xl font-bold text-slate-900 mb-2">Unlock Remote Signing</h2>
+                <p className="text-slate-500 mb-8">
+                    Send documents to others via email and collect signatures remotely. This is a <b>Pro Plan</b> feature.
+                </p>
+
+                <div className="flex flex-col gap-3">
+                    <button 
+                        onClick={() => navigate('/pricing')}
+                        className="w-full py-3.5 bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-bold rounded-xl hover:shadow-lg hover:shadow-purple-200 transition-all flex items-center justify-center gap-2"
+                    >
+                        <Zap className="w-4 h-4 fill-current" />
+                        Upgrade to Unlock
+                    </button>
+                    <button 
+                        onClick={() => setShowUpsell(false)}
+                        className="w-full py-3.5 bg-white border border-slate-200 text-slate-600 font-bold rounded-xl hover:bg-slate-50 transition-all flex items-center justify-center gap-2"
+                    >
+                        <ArrowLeft className="w-4 h-4" />
+                        Go Back
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+  }
+
+  // --- 3. STANDARD UPLOAD VIEW ---
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden animate-fade-in">
@@ -99,7 +181,6 @@ const UploadModal = ({ isOpen, onClose, onUploadSuccess }) => {
         </div>
 
         <div className="p-6">
-          {/* --- STEP 1: Upload & Mode Selection --- */}
           {step === 1 && (
             !file ? (
               <div {...getRootProps()} className={`border-2 border-dashed rounded-xl p-10 flex flex-col items-center justify-center cursor-pointer transition-colors ${isDragActive ? 'border-blue-500 bg-blue-50' : 'border-slate-300 hover:border-blue-400 hover:bg-slate-50'}`}>
@@ -121,11 +202,40 @@ const UploadModal = ({ isOpen, onClose, onUploadSuccess }) => {
                 <div>
                   <label className="block text-sm font-bold text-slate-700 mb-3">Who is signing?</label>
                   <div className="grid grid-cols-2 gap-4">
-                    <button onClick={() => setSigningMode('ME')} className={`flex flex-col items-center gap-3 p-4 rounded-xl border-2 transition-all ${signingMode === 'ME' ? 'border-blue-600 bg-blue-50 text-blue-700' : 'border-slate-200 hover:border-slate-300 text-slate-600'}`}>
+                    
+                    {/* OPTION 1: Only Me */}
+                    <button 
+                        onClick={() => handleModeSelect('ME')} 
+                        className={`flex flex-col items-center gap-3 p-4 rounded-xl border-2 transition-all ${signingMode === 'ME' ? 'border-blue-600 bg-blue-50 text-blue-700' : 'border-slate-200 hover:border-slate-300 text-slate-600'}`}
+                    >
                       <User className="w-6 h-6" /><span className="text-sm font-bold">Only Me</span>
                     </button>
-                    <button onClick={() => setSigningMode('OTHERS')} className={`flex flex-col items-center gap-3 p-4 rounded-xl border-2 transition-all ${signingMode === 'OTHERS' ? 'border-purple-600 bg-purple-50 text-purple-700' : 'border-slate-200 hover:border-slate-300 text-slate-600'}`}>
-                      <Users className="w-6 h-6" /><span className="text-sm font-bold">Others (Remote)</span>
+                    
+                    {/* OPTION 2: Others (Remote) */}
+                    <button 
+                        onClick={() => handleModeSelect('OTHERS')} 
+                        className={`relative flex flex-col items-center gap-3 p-4 rounded-xl border-2 transition-all 
+                        ${signingMode === 'OTHERS' 
+                            ? 'border-purple-600 bg-purple-50 text-purple-700' 
+                            : !isPro 
+                                ? 'border-slate-100 bg-slate-50 text-slate-400 opacity-80' // Locked Style
+                                : 'border-slate-200 hover:border-slate-300 text-slate-600' // Unlocked Inactive
+                        }`}
+                    >
+                      {!isPro && (
+                          <div className="absolute top-2 right-2 bg-white rounded-full p-1 shadow-sm border border-slate-100">
+                              <Lock className="w-3 h-3 text-slate-400" />
+                          </div>
+                      )}
+                      <Users className="w-6 h-6" />
+                      <div className="flex flex-col items-center">
+                          <span className="text-sm font-bold">Others (Remote)</span>
+                          {!isPro && (
+                              <span className="text-[10px] font-bold text-purple-600 mt-1 flex items-center gap-1">
+                                  <Sparkles className="w-3 h-3" /> PRO
+                              </span>
+                          )}
+                      </div>
                     </button>
                   </div>
                 </div>
@@ -141,11 +251,10 @@ const UploadModal = ({ isOpen, onClose, onUploadSuccess }) => {
             )
           )}
 
-          {/* --- STEP 2: Add Recipients (Only for Remote) --- */}
           {step === 2 && (
-            <div className="space-y-4">
-              {/* Add Form */}
-              <div className="bg-slate-50 p-4 rounded-lg border border-slate-200 space-y-3">
+             // ... (Step 2 is identical to your previous code) ...
+             <div className="space-y-4">
+               <div className="bg-slate-50 p-4 rounded-lg border border-slate-200 space-y-3">
                 <input 
                   type="text" 
                   placeholder="Name (e.g. John Doe)" 
@@ -171,7 +280,6 @@ const UploadModal = ({ isOpen, onClose, onUploadSuccess }) => {
                 </div>
               </div>
 
-              {/* List */}
               <div className="max-h-[200px] overflow-y-auto space-y-2">
                 {recipients.length === 0 && <p className="text-center text-slate-400 text-sm py-4">No recipients added yet.</p>}
                 {recipients.map(r => (
