@@ -75,7 +75,32 @@ exports.createCheckoutSession = functions.https.onCall(async (data, context) => 
     }, { merge: true });
   }
 
-  // --- CREATE STRIPE CHECKOUT SESSION ---
+  // --- 2. NEW GATEKEEPER: CHECK FOR ACTIVE SUBSCRIPTION ---
+  // Before taking their money, check if they are already paying us.
+  try {
+    const subscriptions = await stripe.subscriptions.list({
+      customer: customerId,
+      status: 'active',
+      limit: 1 // We only need to know if ONE exists
+    });
+
+    if (subscriptions.data.length > 0) {
+      console.log(`[Info] User ${userId} already has a subscription. Redirecting to Portal.`);
+      
+      // Create a Billing Portal Session instead of a Checkout Session
+      const portalSession = await stripe.billingPortal.sessions.create({
+        customer: customerId,
+        return_url: `https://sign-fast.vercel.app/dashboard`, 
+      });
+
+      return { url: portalSession.url };
+    }
+  } catch (err) {
+    console.error("Error checking existing subscriptions:", err);
+    // Proceeding even if this check fails is risky, but you could choose to throw here.
+  }
+
+  // --- 3. CREATE STRIPE CHECKOUT SESSION (Only if no active sub found) ---
   try {
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ['card'],
