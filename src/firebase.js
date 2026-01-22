@@ -31,14 +31,15 @@ export const functions = getFunctions(app);
 //   connectStorageEmulator(storage, "127.0.0.1", 9199); // If you added storage
 // }
 
-export const logAction = async (docId, action, details = "") => {
+export const logAction = async (docId, action, details = "", performedBy = null) => {
   try {
+    const userEmail = performedBy || (auth.currentUser ? auth.currentUser.email : "Unknown");
     // Creates a sub-collection called 'history' inside the specific document
     await addDoc(collection(db, "documents", docId, "history"), {
       action: action,        // e.g., "Document Uploaded"
       details: details,      // e.g., "User uploaded file.pdf"
       timestamp: serverTimestamp(),
-      user: auth.currentUser ? auth.currentUser.email : "Unknown"
+      user: userEmail
     });
     console.log("Action Logged:", action);
   } catch (error) {

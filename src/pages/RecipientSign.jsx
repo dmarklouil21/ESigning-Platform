@@ -3,7 +3,8 @@ import { useParams, useSearchParams } from 'react-router-dom';
 import { Loader2, AlertTriangle, Calendar, Type, ChevronLeft, ChevronRight, CheckCircle, Download } from 'lucide-react'; 
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { db, storage } from '../firebase';
+import { signInAnonymously } from "firebase/auth";
+import { db, storage, logAction, auth } from '../firebase';
 import { Document, Page, pdfjs } from 'react-pdf';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import SignatureModal from '../components/SignatureModal';
@@ -33,6 +34,8 @@ const RecipientSign = () => {
   useEffect(() => {
     const fetchDoc = async () => {
       try {
+        await signInAnonymously(auth);
+
         const docRef = doc(db, "documents", id);
         const snapshot = await getDoc(docRef);
         
@@ -226,6 +229,13 @@ const RecipientSign = () => {
         lastModified: new Date(),
         recipients: updatedRecipients
       });
+
+      await logAction(
+        id, 
+        "Signed by Recipient", 
+        `${currentRecipient.name} has completed the signing process.`,
+        currentRecipient.email
+      );
 
       // Update local state for the success screen
       setDocData(prev => ({ ...prev, fileUrl: newUrl }));

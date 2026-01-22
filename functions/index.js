@@ -49,7 +49,7 @@ exports.createCheckoutSession = functions.https.onCall(async (data, context) => 
   const priceId = payload.priceId;
   console.log(`[Info] Creating session for User: ${userId}`);
 
-  // --- 2. GET OR CREATE STRIPE CUSTOMER ---
+  // --- GET OR CREATE STRIPE CUSTOMER ---
   const userDocRef = db.collection('users').doc(userId);
   const userDocSnapshot = await userDocRef.get();
 
@@ -75,7 +75,7 @@ exports.createCheckoutSession = functions.https.onCall(async (data, context) => 
     }, { merge: true });
   }
 
-  // --- 3. CREATE STRIPE CHECKOUT SESSION ---
+  // --- CREATE STRIPE CHECKOUT SESSION ---
   try {
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ['card'],
@@ -108,6 +108,26 @@ exports.stripeWebhook = functions.https.onRequest(async (req, res) => {
     return res.status(400).send(`Webhook Error: ${err.message}`);
   }
 
+  // --- IDEMPOTENCY CHECK START ---
+  const eventId = event.id;
+  const eventRef = db.collection('processed_webhooks').doc(eventId);
+  
+  try {
+    // Check if we have already processed this event
+    const docSnap = await eventRef.get();
+    if (docSnap.exists) {
+      console.log(`Duplicate event ${eventId} detected. Skipping.`);
+      return res.json({ received: true }); // Acknowledge receipt without re-processing
+    }
+  } catch (e) {
+    console.error("Error checking idempotency:", e);
+    // If DB check fails, we probably shouldn't proceed, or we risk duplicates. 
+    // Letting it fail to 500 allows Stripe to retry later when DB is back.
+    return res.status(500).send("Database Error");
+  }
+  // --- IDEMPOTENCY CHECK END ---
+
+
   const dataObject = event.data.object;
   const customerId = dataObject.customer;
 
@@ -118,7 +138,9 @@ exports.stripeWebhook = functions.https.onRequest(async (req, res) => {
   };
 
   try {
-    // 1. NEW SUBSCRIPTION (Checkout Success)
+    let processed = false; // Flag to track if we actually did anything
+
+    // NEW SUBSCRIPTION (Checkout Success)
     if (event.type === 'checkout.session.completed') {
        const userDoc = await getUserByCustomer(customerId);
        if (userDoc) {
@@ -128,25 +150,24 @@ exports.stripeWebhook = functions.https.onRequest(async (req, res) => {
            plan: 'pro',
            updatedAt: new Date()
          });
+         processed = true;
        }
     }
 
-    // 2. STATUS CHANGE (Payment Failed, Recovery, or Cancellation)
-    // This handles "past_due", "unpaid", and "active" (recovery)
+    // STATUS CHANGE (Payment Failed, Recovery, or Cancellation)
     if (event.type === 'customer.subscription.updated') {
        const userDoc = await getUserByCustomer(customerId);
        if (userDoc) {
          await userDoc.ref.update({
-           // Sync the status exactly as Stripe reports it
-           // possible values: 'active', 'past_due', 'canceled', 'unpaid'
            subscriptionStatus: dataObject.status, 
            updatedAt: new Date()
          });
          console.log(`User ${userDoc.id} status updated to: ${dataObject.status}`);
+         processed = true;
        }
     }
 
-    // 3. DELETED (Final Cancellation)
+    // DELETED (Final Cancellation)
     if (event.type === 'customer.subscription.deleted') {
        const userDoc = await getUserByCustomer(customerId);
        if (userDoc) {
@@ -155,18 +176,29 @@ exports.stripeWebhook = functions.https.onRequest(async (req, res) => {
              plan: 'free',
              updatedAt: new Date()
          });
+         processed = true;
        }
     }
 
+    // --- SAVE IDEMPOTENCY KEY ---
+    // Only mark as processed if logic succeeded. 
+    // This prevents locking the event if your code crashed halfway through.
+    await eventRef.set({
+      receivedAt: new Date(),
+      type: event.type,
+      processed: processed
+    });
+
   } catch (err) {
     console.error(`Error processing webhook: ${err}`);
+    // Return 500 so Stripe knows to retry this later (since we haven't saved the ID yet)
     return res.status(500).send("Internal Server Error");
   }
 
   res.json({ received: true });
 });
 
-// --- 4. CUSTOMER PORTAL (Manage/Cancel Subscription) ---
+// ---  CUSTOMER PORTAL (Manage/Cancel Subscription) ---
 exports.createPortalSession = functions.https.onCall(async (data, context) => {
   // 1. Authenticate (Same robust logic as before)
   const payload = data.data || data;
@@ -178,7 +210,7 @@ exports.createPortalSession = functions.https.onCall(async (data, context) => {
 
   console.log(`[Info] Creating portal session for User: ${userId}`);
 
-  // 2. Get Stripe Customer ID from Firestore
+  // Get Stripe Customer ID from Firestore
   const userDoc = await db.collection('users').doc(userId).get();
   const customerId = userDoc.data().stripeCustomerId;
 
@@ -186,7 +218,7 @@ exports.createPortalSession = functions.https.onCall(async (data, context) => {
     throw new functions.https.HttpsError('failed-precondition', 'No subscription found for this user.');
   }
 
-  // 3. Create Portal Session
+  // Create Portal Session
   try {
     const session = await stripe.billingPortal.sessions.create({
       customer: customerId,
