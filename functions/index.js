@@ -108,7 +108,7 @@ exports.createCheckoutSession = functions.https.onCall(async (data, context) => 
       customer: customerId,
       line_items: [{ price: priceId, quantity: 1 }],
       // Redirect URLs
-      success_url: `https://sign-fast.vercel.app/dashboard?payment=success`, 
+      success_url: `https://sign-fast.vercel.app/payment/success`, 
       cancel_url: `https://sign-fast.vercel.app/pricing?payment=cancelled`,
     });
     
@@ -168,7 +168,45 @@ exports.stripeWebhook = functions.https.onRequest(async (req, res) => {
     // NEW SUBSCRIPTION (Checkout Success)
     if (event.type === 'checkout.session.completed') {
        const userDoc = await getUserByCustomer(customerId);
+       
        if (userDoc) {
+        const userData = userDoc.data();
+        const newSubscriptionId = dataObject.subscription;
+
+        // --- DUPLICATE WATCHDOG START ---
+          // Check if user is ALREADY active and this is a DIFFERENT subscription
+          if (userData.subscriptionStatus === 'active' && 
+            userData.subscriptionId && 
+            userData.subscriptionId !== newSubscriptionId) {
+            
+            console.warn(`[Duplicate Detected] User ${userDoc.id} paid for sub ${newSubscriptionId} but already has ${userData.subscriptionId}`);
+
+            // 1. Cancel the NEW (duplicate) subscription immediately
+            // 'prorate: false' ensures they get a full refund if you set that up, 
+            // but typically you want to explicitly refund the invoice too.
+            await stripe.subscriptions.cancel(newSubscriptionId, {
+              invoice_now: true,
+            });
+
+            // 2. Refund the payment (Optional but recommended)
+            // We find the latest invoice for this new sub and refund it
+            const latestInvoiceId = dataObject.invoice;
+            if (latestInvoiceId) {
+              const invoice = await stripe.invoices.retrieve(latestInvoiceId);
+              if (invoice.payment_intent) {
+                  await stripe.refunds.create({
+                  payment_intent: invoice.payment_intent,
+                  reason: 'duplicate'
+                });
+                console.log(`[Refunded] Payment for duplicate subscription ${newSubscriptionId}`);
+              }
+            }
+
+            // 3. STOP here. Do not overwrite the existing valid subscription in DB.
+            return res.json({ received: true, status: "duplicate_cancelled" });
+          }
+          // --- DUPLICATE WATCHDOG END ---
+
          await userDoc.ref.update({
            subscriptionStatus: 'active',
            subscriptionId: dataObject.subscription,
@@ -180,29 +218,50 @@ exports.stripeWebhook = functions.https.onRequest(async (req, res) => {
     }
 
     // STATUS CHANGE (Payment Failed, Recovery, or Cancellation)
-    if (event.type === 'customer.subscription.updated') {
-       const userDoc = await getUserByCustomer(customerId);
-       if (userDoc) {
-         await userDoc.ref.update({
-           subscriptionStatus: dataObject.status, 
-           updatedAt: new Date()
-         });
-         console.log(`User ${userDoc.id} status updated to: ${dataObject.status}`);
-         processed = true;
-       }
-    }
+    // 2. & 3. COMBINED: HANDLE UPDATES AND CANCELLATIONS
+    // This handles 'customer.subscription.updated' AND 'customer.subscription.deleted'
+    if (event.type === 'customer.subscription.updated' || event.type === 'customer.subscription.deleted') {
+      const userDoc = await getUserByCustomer(customerId);
 
-    // DELETED (Final Cancellation)
-    if (event.type === 'customer.subscription.deleted') {
-       const userDoc = await getUserByCustomer(customerId);
-       if (userDoc) {
-         await userDoc.ref.update({ 
-             subscriptionStatus: 'canceled',
-             plan: 'free',
-             updatedAt: new Date()
-         });
-         processed = true;
-       }
+      if (userDoc) {
+        // --- THE SAFETY CHECK ---
+        // Regardless of what just happened (cancellation, expiration, payment failure),
+        // we ask Stripe: "Does this customer currently have ANY active subscriptions?"
+        const activeSubscriptions = await stripe.subscriptions.list({
+          customer: customerId,
+          status: 'active',
+          limit: 1 // We only need to find one to verify they are still Pro
+        });
+
+        if (activeSubscriptions.data.length > 0) {
+          // CASE A: THEY ARE STILL PRO
+          // Either the update was just a renewal, OR they cancelled one sub but have another valid one.
+          const survivingSubscription = activeSubscriptions.data[0];
+          
+          console.log(`User ${userDoc.id} retains Pro access via sub: ${survivingSubscription.id}`);
+          
+          await userDoc.ref.update({
+            subscriptionStatus: 'active',
+            subscriptionId: survivingSubscription.id, // Ensure we point to the valid one
+            plan: 'pro',
+            updatedAt: new Date()
+          });
+          processed = true;
+
+        } else {
+          // CASE B: NO ACTIVE SUBSCRIPTIONS LEFT
+          // They cancelled their last/only subscription, or it expired.
+          console.log(`User ${userDoc.id} has 0 active subscriptions. Downgrading to Free.`);
+          
+          await userDoc.ref.update({ 
+            subscriptionStatus: 'canceled', 
+            plan: 'free',
+            subscriptionId: admin.firestore.FieldValue.delete(), // clear the ID
+            updatedAt: new Date()
+          });
+          processed = true;
+        }
+      }
     }
 
     // --- SAVE IDEMPOTENCY KEY ---

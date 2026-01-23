@@ -10,6 +10,7 @@ import Editor from './pages/Editor';
 import RecipientSign from './pages/RecipientSign';
 import Pricing from './pages/Pricing';
 import Profile from './pages/Profile';
+import PaymentSuccess from './pages/PaymentSuccess';
 
 // Protected Route Component
 // If user is NOT logged in, kick them back to Login page
@@ -66,6 +67,7 @@ function App() {
               </PrivateRoute>
             } 
           />
+          <Route path="/payment/success" element={<PaymentSuccess />} />
         </Routes>
       </Router>
     </AuthProvider>
