@@ -130,7 +130,7 @@ const Dashboard = () => {
       await emailjs.send(
         'service_g23671h', 
         'template_n5lpdpv', 
-        'templateParams', 
+        templateParams, 
         '0WB5-X4FNk0oe3RAt'
       );
 
