@@ -57,10 +57,10 @@ const PaymentSuccess = () => {
           Go to Dashboard <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
         </button>
 
-        <p className="text-xs text-slate-400 mt-6 flex items-center justify-center gap-2">
+        {/* <p className="text-xs text-slate-400 mt-6 flex items-center justify-center gap-2">
           <Loader2 className="w-3 h-3 animate-spin" />
           Redirecting in {countdown} seconds...
-        </p>
+        </p> */}
       </div>
     </div>
   );
