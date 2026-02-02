@@ -1,6 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
-import { Loader2, AlertTriangle, Calendar, Type, ChevronLeft, ChevronRight, CheckCircle, Download } from 'lucide-react'; 
+import { Loader2, AlertTriangle, Calendar, Type, ChevronLeft, ChevronRight, CheckCircle, Download } from 'lucide-react';
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { signInAnonymously } from "firebase/auth";
@@ -14,22 +14,24 @@ pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/b
 const RecipientSign = () => {
   const { id } = useParams();
   const [searchParams] = useSearchParams();
-  const token = searchParams.get('token'); 
+  const token = searchParams.get('token');
 
   const [docData, setDocData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [finishing, setFinishing] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
-  
+
   const [currentRecipient, setCurrentRecipient] = useState(null);
   const [signatures, setSignatures] = useState([]);
-  
+
   const [numPages, setNumPages] = useState(null);
-  const [pageNumber, setPageNumber] = useState(1);
-  
+  // const [pageNumber, setPageNumber] = useState(1); // REMOVED
+
   const [isSigModalOpen, setIsSigModalOpen] = useState(false);
   const [activePlaceholderId, setActivePlaceholderId] = useState(null);
+
+  const fieldRefs = useRef({}); // Refs for scrolling
 
   useEffect(() => {
     const fetchDoc = async () => {
@@ -38,7 +40,7 @@ const RecipientSign = () => {
 
         const docRef = doc(db, "documents", id);
         const snapshot = await getDoc(docRef);
-        
+
         if (!snapshot.exists()) {
           setError("Document not found.");
           setLoading(false);
@@ -47,7 +49,7 @@ const RecipientSign = () => {
 
         const data = snapshot.data();
         const recipient = data.recipients.find(r => String(r.tokenId).trim() === String(token).trim());
-        
+
         if (!recipient) {
           setError("Access denied. Invalid or expired token.");
           setLoading(false);
@@ -69,7 +71,7 @@ const RecipientSign = () => {
 
   const handlePlaceholderClick = (item) => {
     if (item.recipientId !== currentRecipient.id) return;
-    
+
     if (item.type === 'placeholder') {
       setActivePlaceholderId(item.id);
       setIsSigModalOpen(true);
@@ -83,6 +85,47 @@ const RecipientSign = () => {
   const handleSaveSignature = (url) => {
     fillPlaceholder(activePlaceholderId, url, 'image');
     setIsSigModalOpen(false);
+
+    // Auto-scroll to next
+    setTimeout(() => scrollToNext(activePlaceholderId), 100);
+  };
+
+  const scrollToNext = (justFilledId) => {
+    // 1. Get current (just filled) sig to compare position
+    const currentSig = signatures.find(s => s.id === justFilledId);
+    if (!currentSig) return;
+
+    // 2. Find all remaining placeholders for ME
+    const myRemaining = signatures.filter(s =>
+      s.recipientId === currentRecipient.id &&
+      s.type.startsWith('placeholder') &&
+      s.id !== justFilledId // Exclude the one we just filled
+    );
+
+    if (myRemaining.length === 0) return;
+
+    // 3. Sort by position (Page -> Y -> X)
+    const sorted = [...myRemaining].sort((a, b) => {
+      if (a.page !== b.page) return a.page - b.page;
+      if (a.y !== b.y) return a.y - b.y;
+      return a.x - b.x;
+    });
+
+    // 4. Find first one located "after" the current one
+    const nextFn = (s) => {
+      if (s.page > currentSig.page) return true;
+      if (s.page === currentSig.page && s.y > currentSig.y + 10) return true; // +10 tolerance
+      return false;
+    };
+
+    const nextOne = sorted.find(nextFn);
+
+    // 5. If found, scroll. If not (we are at bottom), wrap to top (first in sorted).
+    const target = nextOne || sorted[0];
+
+    if (target && fieldRefs.current[target.id]) {
+      fieldRefs.current[target.id].scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
   };
 
   const fillPlaceholder = (id, value, type) => {
@@ -90,11 +133,11 @@ const RecipientSign = () => {
       if (sig.id === id) {
         return {
           ...sig,
-          type: type === 'image' ? 'image' : 'text', 
+          type: type === 'image' ? 'image' : 'text',
           url: type === 'image' ? value : null,
           text: type === 'text' ? value : null,
-          filledBy: currentRecipient.id, 
-          isRemoteSigned: true 
+          filledBy: currentRecipient.id,
+          isRemoteSigned: true
         };
       }
       return sig;
@@ -111,14 +154,14 @@ const RecipientSign = () => {
     for (const item of signatures) {
       if (item.type.startsWith('placeholder')) continue;
 
-      const pageIndex = item.page - 1; 
+      const pageIndex = item.page - 1;
       if (pageIndex < 0 || pageIndex >= pages.length) continue;
-      
+
       const page = pages[pageIndex];
       const { width: pdfPageWidth, height: pdfPageHeight } = page.getSize();
-      
-      const scaleRatio = pdfPageWidth / 600; 
-      const yCorrection = 4; 
+
+      const scaleRatio = pdfPageWidth / 600;
+      const yCorrection = 4;
 
       const x = item.x * scaleRatio;
       const y = pdfPageHeight - ((item.y + item.height) * scaleRatio) + yCorrection;
@@ -126,17 +169,17 @@ const RecipientSign = () => {
       const h = item.height * scaleRatio;
 
       if (item.type === 'text') {
-        const fontSize = h * 0.6; 
-        const textY = y + (h * 0.25); 
+        const fontSize = h * 0.6;
+        const textY = y + (h * 0.25);
         page.drawText(item.text, { x, y: textY, size: fontSize, font: helveticaFont, color: rgb(0, 0, 0) });
       } else if (item.type === 'image') {
-      
+
         const sigImageBytes = await fetch(item.url).then(res => res.arrayBuffer());
         let sigImage;
-        try { 
-          sigImage = await pdfDoc.embedPng(sigImageBytes); 
-        } catch (e) { 
-          sigImage = await pdfDoc.embedJpg(sigImageBytes); 
+        try {
+          sigImage = await pdfDoc.embedPng(sigImageBytes);
+        } catch (e) {
+          sigImage = await pdfDoc.embedJpg(sigImageBytes);
         }
 
         // --- ASPECT RATIO FIX START ---
@@ -167,13 +210,13 @@ const RecipientSign = () => {
         // Center the image within the placeholder box
         const xOffset = (boxWidth - finalWidth) / 2;
         const yOffset = (boxHeight - finalHeight) / 2;
-        
+
         // Draw with calculated dimensions
-        page.drawImage(sigImage, { 
-          x: x + xOffset, 
-          y: y + yOffset, 
-          width: finalWidth, 
-          height: finalHeight 
+        page.drawImage(sigImage, {
+          x: x + xOffset,
+          y: y + yOffset,
+          width: finalWidth,
+          height: finalHeight
         });
         // --- ASPECT RATIO FIX END ---
       }
@@ -184,7 +227,7 @@ const RecipientSign = () => {
 
   // --- UPDATED FINISH HANDLER ---
   const handleFinish = async () => {
-    const pendingCount = signatures.filter(s => 
+    const pendingCount = signatures.filter(s =>
       s.type.startsWith('placeholder') && s.recipientId === currentRecipient.id
     ).length;
 
@@ -207,13 +250,13 @@ const RecipientSign = () => {
         contentDisposition: `attachment; filename="signed_${docData.name}"`,
       };
       await uploadBytes(storageRef, blob, metadata);
-      
+
       const newUrl = await getDownloadURL(storageRef);
 
       const remainingSignatures = signatures.filter(s => s.type.startsWith('placeholder'));
 
       // 3. Logic: Update Recipient Status & Check if ALL are done
-      const updatedRecipients = docData.recipients.map(r => 
+      const updatedRecipients = docData.recipients.map(r =>
         r.id === currentRecipient.id ? { ...r, status: 'completed', signedAt: new Date() } : r
       );
 
@@ -231,8 +274,8 @@ const RecipientSign = () => {
       });
 
       await logAction(
-        id, 
-        "Signed by Recipient", 
+        id,
+        "Signed by Recipient",
         `${currentRecipient.name} has completed the signing process.`,
         currentRecipient.email
       );
@@ -248,7 +291,7 @@ const RecipientSign = () => {
     }
   };
 
-  const changePage = (offset) => setPageNumber(prev => Math.min(Math.max(1, prev + offset), numPages || 1));
+  // const changePage = (offset) => setPageNumber(prev => Math.min(Math.max(1, prev + offset), numPages || 1)); // REMOVED
 
   // --- Helper: Download for Recipient ---
   const downloadSignedDoc = () => {
@@ -275,9 +318,9 @@ const RecipientSign = () => {
           <p className="text-slate-500 mb-8">
             Thank you, {currentRecipient.name}. The document has been securely signed.
           </p>
-          
+
           {/* Download Button for Recipient */}
-          <button 
+          <button
             onClick={downloadSignedDoc}
             className="w-full py-3 bg-purple-600 text-white font-bold rounded-lg hover:bg-purple-700 transition-colors flex items-center justify-center gap-2 mb-4 shadow-md"
           >
@@ -299,7 +342,7 @@ const RecipientSign = () => {
           <h1 className="font-bold text-slate-800 text-sm md:text-base">{docData.name}</h1>
           <p className="text-xs text-slate-500">Signing as <span className="font-bold text-purple-600">{currentRecipient.name}</span></p>
         </div>
-        <button 
+        <button
           onClick={handleFinish}
           disabled={finishing}
           className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-2 rounded-lg font-bold shadow-md transition-colors disabled:bg-purple-300 flex items-center gap-2"
@@ -309,64 +352,73 @@ const RecipientSign = () => {
         </button>
       </header>
 
-      <div className="flex-1 overflow-auto p-4 md:p-8 flex justify-center bg-slate-200/50 pb-32"> 
-        <div className="relative shadow-2xl border border-slate-300 bg-white inline-block">
-           <Document file={docData.fileUrl} onLoadSuccess={({numPages}) => setNumPages(numPages)} loading={<div className="h-96 flex items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-purple-600"/></div>}>
-             <Page pageNumber={pageNumber} scale={1.0} renderTextLayer={false} renderAnnotationLayer={false} />
-           </Document>
+      <div className="flex-1 overflow-auto p-4 md:p-8 flex justify-center bg-slate-200/50 pb-32">
+        <div className="flex flex-col items-center">
+          {docData?.fileUrl && (
+            <Document
+              file={docData.fileUrl}
+              onLoadSuccess={({ numPages }) => setNumPages(numPages)}
+              loading={<div className="h-96 flex items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-purple-600" /></div>}
+            >
+              {numPages && Array.from(new Array(numPages), (_, index) => {
+                const pageNum = index + 1;
+                return (
+                  <div key={pageNum} className="relative shadow-xl border border-slate-300 bg-white mb-8 select-none">
+                    <Page pageNumber={pageNum} scale={1.0} renderTextLayer={false} renderAnnotationLayer={false} />
 
-           {signatures
-             .filter(item => item.page === pageNumber) 
-             .map(item => {
-               const isMyBox = item.recipientId === currentRecipient.id;
-               const isPlaceholder = item.type.startsWith('placeholder');
-               let styleClass = "absolute border-2 transition-all flex items-center justify-center ";
-               
-               if (isPlaceholder) {
-                  if (isMyBox) {
-                     styleClass += "bg-yellow-100/80 border-yellow-500 cursor-pointer hover:bg-yellow-200 animate-pulse-slow shadow-md";
-                  } else {
-                     styleClass += "bg-slate-100/50 border-slate-300 cursor-not-allowed opacity-60 grayscale";
-                  }
-               } else {
-                  styleClass += "border-transparent";
-               }
+                    {/* Overlay Signatures/Placeholders for this page */}
+                    {signatures
+                      .filter(item => item.page === pageNum)
+                      .map(item => {
+                        const isMyBox = item.recipientId === currentRecipient.id;
+                        const isPlaceholder = item.type.startsWith('placeholder');
+                        let styleClass = "absolute border-2 transition-all flex items-center justify-center ";
 
-               return (
-                 <div
-                   key={item.id}
-                   onClick={() => handlePlaceholderClick(item)}
-                   className={styleClass}
-                   style={{ left: item.x, top: item.y, width: item.width, height: item.height, zIndex: 50 }}
-                 >
-                   {item.type === 'placeholder' && (
-                     <div className="text-center">
-                       <span className={`text-[10px] font-bold uppercase tracking-wider ${isMyBox ? 'text-yellow-800' : 'text-slate-500'}`}>
-                         {isMyBox ? "Sign Here" : "Other Signer"}
-                       </span>
-                     </div>
-                   )}
-                   {item.type === 'placeholder-date' && (
-                     <div className="flex flex-col items-center text-yellow-800"><Calendar className="w-4 h-4 mb-1" /><span className="text-[9px] font-bold uppercase">Date</span></div>
-                   )}
-                   {item.type === 'placeholder-name' && (
-                     <div className="flex flex-col items-center text-yellow-800"><Type className="w-4 h-4 mb-1" /><span className="text-[9px] font-bold uppercase">Name</span></div>
-                   )}
-                   {item.type === 'image' && <img src={item.url} className="w-full h-full object-contain" alt="Signature" />}
-                   {item.type === 'text' && <div className="w-full h-full flex items-center justify-center whitespace-nowrap" style={{ fontSize: `${item.height * 0.6}px`, fontFamily: 'Helvetica' }}>{item.text}</div>}
-                 </div>
-               );
-           })}
+                        if (isPlaceholder) {
+                          if (isMyBox) {
+                            styleClass += "bg-yellow-100/80 border-yellow-500 cursor-pointer hover:bg-yellow-200 animate-pulse-slow shadow-md";
+                          } else {
+                            styleClass += "bg-slate-100/50 border-slate-300 cursor-not-allowed opacity-60 grayscale";
+                          }
+                        } else {
+                          styleClass += "border-transparent";
+                        }
+
+                        return (
+                          <div
+                            key={item.id}
+                            ref={el => fieldRefs.current[item.id] = el} // Ref for auto-scroll
+                            onClick={() => handlePlaceholderClick(item)}
+                            className={styleClass}
+                            style={{ left: item.x, top: item.y, width: item.width, height: item.height, zIndex: 50 }}
+                          >
+                            {item.type === 'placeholder' && (
+                              <div className="text-center">
+                                <span className={`text-[10px] font-bold uppercase tracking-wider ${isMyBox ? 'text-yellow-800' : 'text-slate-500'}`}>
+                                  {isMyBox ? "Sign Here" : "Other Signer"}
+                                </span>
+                              </div>
+                            )}
+                            {item.type === 'placeholder-date' && (
+                              <div className="flex flex-col items-center text-yellow-800"><Calendar className="w-4 h-4 mb-1" /><span className="text-[9px] font-bold uppercase">Date</span></div>
+                            )}
+                            {item.type === 'placeholder-name' && (
+                              <div className="flex flex-col items-center text-yellow-800"><Type className="w-4 h-4 mb-1" /><span className="text-[9px] font-bold uppercase">Name</span></div>
+                            )}
+                            {item.type === 'image' && <img src={item.url} className="w-full h-full object-contain" alt="Signature" />}
+                            {item.type === 'text' && <div className="w-full h-full flex items-center justify-center whitespace-nowrap" style={{ fontSize: `${item.height * 0.6}px`, fontFamily: 'Helvetica' }}>{item.text}</div>}
+                          </div>
+                        );
+                      })}
+                  </div>
+                );
+              })}
+            </Document>
+          )}
         </div>
       </div>
 
-      {numPages && numPages > 1 && (
-        <div className="fixed bottom-8 left-1/2 transform -translate-x-1/2 bg-white px-6 py-3 rounded-full shadow-xl border border-slate-200 flex items-center gap-6 z-50">
-          <button disabled={pageNumber <= 1} onClick={() => changePage(-1)} className="p-2 hover:bg-slate-100 rounded-full disabled:opacity-30"><ChevronLeft className="w-6 h-6" /></button>
-          <span className="text-sm font-semibold text-slate-700 min-w-[80px] text-center">Page {pageNumber} of {numPages}</span>
-          <button disabled={pageNumber >= numPages} onClick={() => changePage(1)} className="p-2 hover:bg-slate-100 rounded-full disabled:opacity-30"><ChevronRight className="w-6 h-6" /></button>
-        </div>
-      )}
+      {/* Page Controls Removed */}
 
       <SignatureModal isOpen={isSigModalOpen} onClose={() => setIsSigModalOpen(false)} onSave={handleSaveSignature} />
     </div>
