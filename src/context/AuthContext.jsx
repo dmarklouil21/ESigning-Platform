@@ -1,16 +1,15 @@
-// src/context/AuthContext.jsx
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { 
-  createUserWithEmailAndPassword, 
-  signInWithEmailAndPassword, 
-  signOut, 
+import {
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  signOut,
   onAuthStateChanged,
   updateProfile,
-  sendEmailVerification, 
-  sendPasswordResetEmail 
+  sendEmailVerification,
+  sendPasswordResetEmail
 } from 'firebase/auth';
-import { doc, setDoc, onSnapshot } from 'firebase/firestore'; // <--- Added onSnapshot
-import { auth, db } from '../firebase'; 
+import { doc, setDoc, onSnapshot } from 'firebase/firestore';
+import { auth, db } from '../firebase';
 
 const AuthContext = createContext();
 
@@ -18,10 +17,9 @@ export const useAuth = () => useContext(AuthContext);
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
-  const [userProfile, setUserProfile] = useState(null); // <--- New: Stores DB data (Pro status)
+  const [userProfile, setUserProfile] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // 1. Sign Up Function
   const signup = async (email, password, firstName, lastName) => {
     const userCredential = await createUserWithEmailAndPassword(auth, email, password);
     const createdUser = userCredential.user;
@@ -36,23 +34,19 @@ export const AuthProvider = ({ children }) => {
       email: email,
       createdAt: new Date().toISOString(),
       uid: createdUser.uid,
-      subscriptionStatus: 'free' // Default status
+      subscriptionStatus: 'free'
     });
-    
+
     return createdUser;
   };
 
-  // 2. Login Function
   const login = (email, password) => {
     return signInWithEmailAndPassword(auth, email, password);
   };
 
-  // 3. Logout Function
   const logout = () => {
     return signOut(auth);
   };
-
-  // 4. Send Verification Email
   const sendVerificationEmail = (currentUser) => {
     const targetUser = currentUser || auth.currentUser;
     if (targetUser) {
@@ -60,7 +54,6 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  // 5. Reload User
   const reloadUser = async () => {
     if (auth.currentUser) {
       await auth.currentUser.reload();
@@ -69,12 +62,13 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  // 6. Monitor Auth State & Profile Data
+  const resetPassword = (email) => {
+    return sendPasswordResetEmail(auth, email);
+  };
   useEffect(() => {
-    // A. Auth Listener
     const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
-      
+
       if (!currentUser) {
         setUserProfile(null);
         setLoading(false);
@@ -84,14 +78,12 @@ export const AuthProvider = ({ children }) => {
     return () => unsubscribeAuth();
   }, []);
 
-  // B. Database Listener (Runs only when user is logged in)
   useEffect(() => {
     let unsubscribeSnapshot = null;
 
     if (user) {
       const userRef = doc(db, "users", user.uid);
-      
-      // Listen for real-time changes to the user's document
+
       unsubscribeSnapshot = onSnapshot(userRef, (docSnap) => {
         if (docSnap.exists()) {
           setUserProfile(docSnap.data());
@@ -116,7 +108,8 @@ export const AuthProvider = ({ children }) => {
     login,
     logout,
     sendVerificationEmail,
-    reloadUser
+    reloadUser,
+    resetPassword
   };
 
   return (

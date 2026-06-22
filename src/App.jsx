@@ -11,6 +11,7 @@ import RecipientSign from './pages/RecipientSign';
 import Pricing from './pages/Pricing';
 import Profile from './pages/Profile';
 import PaymentSuccess from './pages/PaymentSuccess';
+import ForgotPassword from './pages/ForgotPassword';
 
 const PrivateRoute = ({ children }) => {
   const { user } = useAuth();
@@ -29,6 +30,7 @@ function App() {
           <Route path="/" element={<LandingPage />} />
           <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
           <Route path="/signup" element={<PublicRoute><Signup /></PublicRoute>} />
+          <Route path="/forgot-password" element={<PublicRoute><ForgotPassword /></PublicRoute>} />
 
           <Route
             path="/dashboard"
